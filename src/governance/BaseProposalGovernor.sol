@@ -58,7 +58,7 @@ abstract contract BaseProposalGovernor is ERC165Upgradeable, ProposalGovernorInt
 
     function __BaseProposalGovernor_init(string memory name_) internal onlyInitializing {
         __BaseGovernor_init_unchained();
-        __BaseBaseProposalGovernor_init_unchained(name_);
+        __BaseProposalGovernor_init_unchained(name_);
     }
 
     function __BaseProposalGovernor_init_unchained(string memory name_) internal onlyInitializing {
@@ -69,7 +69,7 @@ abstract contract BaseProposalGovernor is ERC165Upgradeable, ProposalGovernorInt
        return
         interfaceId == type(ProposalGovernorInterface).interfaceId ||
         interfaceId == type(IERC1155ReceiverUpgradeable).interfaceId ||
-        BaseContractGovernor.supportsInterface(interfaceId) ||
+        BaseGovernor.supportsInterface(interfaceId) ||
         super.supportsInterface(interfaceId);
     }
 

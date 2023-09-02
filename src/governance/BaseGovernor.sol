@@ -24,7 +24,7 @@ abstract contract BaseGovernor is GovernorInterface, Initializable, IERC165Upgra
     function __BaseGovernor_init_unchained() internal onlyInitializing {
     }
 
-    function _executeCallInternal(address[] memory targets, uint256[] memory values, bytes[] memory calldatas, bytes32 descriptionHash) internal virtual returns (bytes[] memory returnData)
+    function _executeCallInternal(address[] memory targets, uint256[] memory values, bytes[] memory calldatas, bytes32) internal virtual returns (bytes[] memory returnData)
     {
         string memory errorMessage = "Governor: call reverted without message";
         returnData = new bytes[](targets.length);

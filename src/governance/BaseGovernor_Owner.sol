@@ -5,7 +5,7 @@ import {BaseGovernor} from "./BaseGovernor.sol";
 abstract contract BaseGovernor_Owner is BaseGovernor {
     function __BaseGovernor_Owner_init() internal onlyInitializing {
         __BaseGovernor_init();
-        __BaseGovernor_LocalAdmin_init_unchained();
+        __BaseGovernor_Owner_init_unchained();
     }
 
     function __BaseGovernor_Owner_init_unchained() internal onlyInitializing {
