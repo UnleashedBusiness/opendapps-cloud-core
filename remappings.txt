@@ -1,0 +1,1 @@
+@unleashed/opendapps-cloud-interfaces/=lib/opendapps-cloud-interfaces/src/
