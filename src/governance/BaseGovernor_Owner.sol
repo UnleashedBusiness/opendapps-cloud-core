@@ -2,6 +2,8 @@ pragma solidity ^0.8.7;
 
 import {BaseGovernor} from "./BaseGovernor.sol";
 
+    error OnlyOwnerPermitted(address expected, address actual);
+
 abstract contract BaseGovernor_Owner is BaseGovernor {
     function __BaseGovernor_Owner_init() internal onlyInitializing {
         __BaseGovernor_init();
@@ -12,7 +14,9 @@ abstract contract BaseGovernor_Owner is BaseGovernor {
     }
 
     modifier onlyOwner(address wallet) {
-        require(wallet == owner(), "Only owner can call function!");
+        if (wallet != owner()) {
+            revert OnlyOwnerPermitted(owner(), wallet);
+        }
         _;
     }
 

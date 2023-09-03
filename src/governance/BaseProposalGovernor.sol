@@ -13,11 +13,20 @@ import {ProposalGovernorInterface} from "@unleashed/opendapps-cloud-interfaces/g
 
 import "./BaseGovernor.sol";
 
+    error OnlyGovernancePermitted(address expected, address actual);
+    error ProposerVotesBelowProposalThreshold(uint256 expected, uint256 actual);
+    error InvalidProposalLength(uint256 expected, uint256 actual);
+    error EmptyProposal();
+    error ProposalAlreadyExists(uint256 proposalId);
+    error ProposalNotSuccessful(uint256 proposalId);
+    error ProposalNotActive(uint256 proposalId);
+    error VotingNotActive(uint256 proposalId);
+
 /**
  * Forked from openzeppelin Governor 4.3 and fixes some issues
  */
 abstract contract BaseProposalGovernor is ERC165Upgradeable, ProposalGovernorInterface, IERC721ReceiverUpgradeable,
-        IERC1155ReceiverUpgradeable, BaseGovernor {
+IERC1155ReceiverUpgradeable, BaseGovernor {
     enum ProposalState {
         Pending,
         Active,
@@ -47,7 +56,9 @@ abstract contract BaseProposalGovernor is ERC165Upgradeable, ProposalGovernorInt
     DoubleEndedQueueUpgradeable.Bytes32Deque private _governanceCall;
 
     modifier onlyGovernance() {
-        require(msg.sender == _executor(), "Governor: onlyGovernance");
+        if (msg.sender != _executor()) {
+            revert OnlyGovernancePermitted(_executor(), msg.sender);
+        }
         if (_executor() != address(this)) {
             bytes32 msgDataHash = keccak256(msg.data);
             // loop until popping the expected operation - throw if deque is empty (operation not authorized)
@@ -66,11 +77,11 @@ abstract contract BaseProposalGovernor is ERC165Upgradeable, ProposalGovernorInt
     }
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(IERC165Upgradeable, ERC165Upgradeable, BaseGovernor) returns (bool) {
-       return
-        interfaceId == type(ProposalGovernorInterface).interfaceId ||
-        interfaceId == type(IERC1155ReceiverUpgradeable).interfaceId ||
-        BaseGovernor.supportsInterface(interfaceId) ||
-        super.supportsInterface(interfaceId);
+        return
+            interfaceId == type(ProposalGovernorInterface).interfaceId ||
+            interfaceId == type(IERC1155ReceiverUpgradeable).interfaceId ||
+            BaseGovernor.supportsInterface(interfaceId) ||
+            super.supportsInterface(interfaceId);
     }
 
     function name() public view virtual returns (string memory) {
@@ -163,19 +174,26 @@ abstract contract BaseProposalGovernor is ERC165Upgradeable, ProposalGovernorInt
         bytes[] memory calldatas,
         string memory description
     ) public virtual override {
-        require(
-            getVotes(msg.sender, block.number - 1) >= proposalThreshold(),
-            "Governor: proposer votes below proposal threshold"
-        );
+        if (getVotes(msg.sender, block.number - 1) < proposalThreshold()) {
+            revert ProposerVotesBelowProposalThreshold(proposalThreshold(), getVotes(msg.sender, block.number - 1));
+        }
 
         uint256 proposalId = buildProposalId(targets, values, calldatas, keccak256(bytes(description)));
 
-        require(targets.length == values.length, "Governor: invalid proposal length");
-        require(targets.length == calldatas.length, "Governor: invalid proposal length");
-        require(targets.length > 0, "Governor: empty proposal");
+        if (targets.length != values.length) {
+            revert InvalidProposalLength(targets.length, values.length);
+        }
+        if (targets.length != calldatas.length) {
+            revert InvalidProposalLength(targets.length, calldatas.length);
+        }
+        if (targets.length <= 0) {
+            revert EmptyProposal();
+        }
 
         ProposalCore storage proposal = _proposals[proposalId];
-        require(proposal.voteStart.isUnset(), "Governor: proposal already exists");
+        if (!proposal.voteStart.isUnset()) {
+            revert ProposalAlreadyExists(proposalId);
+        }
 
         uint64 snapshot = block.number.toUint64() + votingDelay().toUint64();
         uint64 deadline = snapshot + votingPeriod().toUint64();
@@ -205,10 +223,9 @@ abstract contract BaseProposalGovernor is ERC165Upgradeable, ProposalGovernorInt
         uint256 proposalId = buildProposalId(targets, values, calldatas, descriptionHash);
 
         ProposalState status = ProposalState(proposalState(proposalId));
-        require(
-            status == ProposalState.Succeeded || status == ProposalState.Queued,
-            "Governor: proposal not successful"
-        );
+        if (status != ProposalState.Succeeded && status != ProposalState.Queued) {
+            revert ProposalNotSuccessful(proposalId);
+        }
         _proposals[proposalId].executed = true;
 
         _beforeExecute(proposalId, targets, values, calldatas, descriptionHash);
@@ -259,10 +276,9 @@ abstract contract BaseProposalGovernor is ERC165Upgradeable, ProposalGovernorInt
         uint256 proposalId = buildProposalId(targets, values, calldatas, descriptionHash);
         ProposalState status = ProposalState(proposalState(proposalId));
 
-        require(
-            status != ProposalState.Canceled && status != ProposalState.Expired && status != ProposalState.Executed,
-            "Governor: proposal not active"
-        );
+        if (status == ProposalState.Canceled || status == ProposalState.Expired || status == ProposalState.Executed) {
+            revert ProposalNotActive(proposalId);
+        }
         _proposals[proposalId].canceled = true;
 
         return proposalId;
@@ -276,7 +292,9 @@ abstract contract BaseProposalGovernor is ERC165Upgradeable, ProposalGovernorInt
         address voter = msg.sender;
 
         ProposalCore storage proposal = _proposals[proposalId];
-        require(proposalState(proposalId) == uint8(ProposalState.Active), "Governor: vote not currently active");
+        if (proposalState(proposalId) != uint8(ProposalState.Active)) {
+            revert VotingNotActive(proposalId);
+        }
 
         uint256 weight = _getVotes(voter, proposal.voteStart.getDeadline());
         _countVote(proposalId, voter, weight);
