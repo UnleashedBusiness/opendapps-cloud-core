@@ -13,6 +13,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {TokenAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceInterface.sol";
 import {InflationInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/InflationInterface.sol";
 import {DynamicTokenomicsInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/DynamicTokenomicsInterface.sol";
+import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 
 import {OwnershipNFTCollection} from "./../ownership/OwnershipNFTCollection.sol";
 
@@ -20,8 +21,8 @@ import {OwnershipNFTCollection} from "./../ownership/OwnershipNFTCollection.sol"
     error InitialSupplyPercentInvalidError(uint256 min, uint256 max, uint256 actual);
     error TransactionInvalidError(address from, address to, uint256 size);
 
-contract TokenAsAService is TokenAsAServiceInterface, Initializable, ERC165Upgradeable, ERC20Upgradeable,
-OwnableUpgradeable {
+contract TokenAsAService is TokenAsAServiceInterface, ServiceDeployableInterface,
+Initializable, ERC165Upgradeable, ERC20Upgradeable, OwnableUpgradeable {
 
     event Burn(uint256 amount);
 
@@ -72,6 +73,10 @@ OwnableUpgradeable {
 
     function metadataUrl() external view returns (string memory) {
         return OwnershipNFTCollection(ownershipCollection).tokenURI(ownershipTokenId);
+    }
+
+    function canAccessFromDeployer(address walletOrContract) external view returns (bool){
+        return owner() == walletOrContract;
     }
 
     function initialize(

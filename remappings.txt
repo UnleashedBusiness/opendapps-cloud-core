@@ -1,3 +1,5 @@
 @unleashed/opendapps-cloud-interfaces/=lib/opendapps-cloud-interfaces/src/
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
 @openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts/
+@uniswap/v2-core/=lib/v2-core/
+@uniswap/v2-periphery/=lib/v2-periphery/

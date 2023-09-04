@@ -8,6 +8,7 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import {DecentralizedEntityInterface} from "@unleashed/opendapps-cloud-interfaces/decentralized-entity/DecentralizedEntityInterface.sol";
+import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 
 import {BaseGovernor_Owner} from "../governance/BaseGovernor_Owner.sol";
 import {BaseGovernor} from "../governance/BaseGovernor.sol";
@@ -15,7 +16,7 @@ import {OwnershipNFTCollection} from "./../ownership/OwnershipNFTCollection.sol"
 
     error InterfaceNotSupportedError(address target, bytes4 interfaceId);
 
-contract SingleOwnerEntity is DecentralizedEntityInterface, BaseGovernor_Owner, IERC721Receiver, IERC1155Receiver {
+contract SingleOwnerEntity is DecentralizedEntityInterface, ServiceDeployableInterface, BaseGovernor_Owner, IERC721Receiver, IERC1155Receiver {
     //IERC721Receiver & IERC1155Receiver are to enable ownership of other entities
 
     string internal _name;
@@ -39,6 +40,10 @@ contract SingleOwnerEntity is DecentralizedEntityInterface, BaseGovernor_Owner, 
     }
 
     //VIEW - PUBLIC - START
+    function canAccessFromDeployer(address walletOrContract) external view returns (bool){
+        return isOwner(walletOrContract);
+    }
+
     function name() override external view returns (string memory) {
         return _name;
     }

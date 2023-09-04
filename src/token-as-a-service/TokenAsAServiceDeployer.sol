@@ -13,39 +13,34 @@ import {ERC165CheckerUpgradeable} from "@openzeppelin/contracts-upgradeable/util
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {EnumerableSetUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 
-import {IContractDeployerInterface} from "@stopelon/contracts-common/contracts/deploy/interface/IContractDeployerInterface.sol";
-import {ContractDeployer, NotPartOfDeployer} from "@stopelon/contracts-common/contracts/deploy/base/ContractDeployer.sol";
-
 import {IWETH} from "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
-import {IRewardsTreasury_v1} from "@stopelon/contracts-common/contracts/reward-distribution/interface/IRewardsTreasury_v1.sol";
+
+import {IContractDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/IContractDeployerInterface.sol";
+import {TokenAsAServiceDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceDeployerInterface.sol";
+import {TokenAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceInterface.sol";
+import {DynamicTokenomicsInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/DynamicTokenomicsInterface.sol";
+import {InflationInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/InflationInterface.sol";
+import {TokenTreasuryInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenTreasuryInterface.sol";
+import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
+import {SecondaryServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/SecondaryServiceDeployableInterface.sol";
+
 import {OwnershipNFTCollection} from "./../ownership/OwnershipNFTCollection.sol";
-
-import {ITokenAsAServiceTemplate_v1} from "./../interface/ITokenAsAServiceTemplate_v1.sol";
-import {ITransferTokenomics_v1} from "./../interface/ITransferTokenomics.sol";
-import {IInflationTokenomics_v1} from "./../interface/IInflationTokenomics.sol";
 import {LiquidityUtils} from "./../lib/LiquidityUtils.sol";
-import {Treasury} from "./Treasury.sol";
-import {ITreasury} from "./../interface/ITreasury.sol";
 
-    error ProvidedTemplateNotCompatibleForTreasury();
-    error ProvidedAddressNotCompatibleWithRequiredInterfaces();
-    error RouterNotPartOfWhitelist();
-    error RouterAlreadyPartOfWhitelist();
-    error TotalTaxProvidedLowerThanExpected();
-    error OwnerShareGreaterThanAllowed();
-    error InitialSupplyExceedsAllowedValues();
-    error SenderDoesNotHaveEnoughFunds();
-    error TokenAllowanceIsLessThenRequestedTransfer();
-    error OnlyOwnerPermittedOperation();
-    error ETHLessThanRequiredMinimumLiquidity();
-    error CompensationCalculationFailed();
+    error ProvidedAddressNotCompatibleWithRequiredInterfaces(address target, bytes4 interfaceId);
+    error RouterNotPartOfWhitelist(address router);
+    error RouterAlreadyPartOfWhitelist(address router);
+    error OwnerShareGreaterThanAllowed(uint256 max, uint256 actual);
+    error InitialSupplyExceedsAllowedValues(uint256 min, uint256 max, uint256 actual);
+    error SenderDoesNotHaveEnoughFunds(uint256 expected, uint256 actual);
+    error TokenAllowanceIsLessThenRequestedTransfer(uint256 expected, uint256 actual);
+    error OnlyOwnerPermittedOperation(address actual);
+    error ETHLessThanRequiredMinimumLiquidity(uint256 expected, uint256 actual);
 
-contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
-    event RefCodeUsed(bytes32 indexed code, address indexed receiver, uint256 ammount);
-
-    bytes32 public constant LOCAL_MANAGER_ROLE = keccak256("LOCAL_MANAGER_ROLE");
+contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializable, AccessControlUpgradeable {
+    uint256[50] private __gap;
 
     enum TokenLevel {
         Basic,
@@ -54,9 +49,10 @@ contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
         InflationAdvanced
     }
 
+    event RefCodeUsed(bytes32 indexed code, address indexed receiver, uint256 ammount);
     event TokenServiceDeployed(address indexed creator, uint8 indexed typeId, address contractAddress, address tokenomicsAddress, address inflationAddress, address treasuryAddress);
 
-    uint256[50] private __gap;
+    bytes32 public constant LOCAL_MANAGER_ROLE = keccak256("LOCAL_MANAGER_ROLE");
 
     bytes32 public constant GROUP_TOKENOMICS = keccak256("Tokenomics");
     bytes32 public constant GROUP_TOKEN = keccak256("Token");
@@ -76,22 +72,27 @@ contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
     uint256 public ownerRewardCycles;
 
     address public ownershipNFTCollection;
+
     EnumerableSetUpgradeable.AddressSet internal whitelistedDexRouters;
     mapping(address => address) private wethOverrides;
-    mapping(address => address) private tokenTreasury;
 
     using SafeMathUpgradeable for uint256;
     using AddressUpgradeable for address;
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
 
-    struct TokenDeployment {
-        address token;
-        address tokenomics;
-        address inflation;
-        address treasury;
-    }
-
     receive() external payable {}
+
+    modifier __requireSecondaryServicePermission(address service, address expectedOwner) {
+        if (!ERC165CheckerUpgradeable.supportsInterface(service, type(SecondaryServiceDeployableInterface).interfaceId)) {
+            revert ProvidedAddressNotCompatibleWithRequiredInterfaces(service, type(SecondaryServiceDeployableInterface).interfaceId);
+        }
+
+        address masterDeployable = SecondaryServiceDeployableInterface(service).masterDeployable();
+        if (!ServiceDeployableInterface(masterDeployable).canAccessFromDeployer(msg.sender) || (expectedOwner != address(0) && expectedOwner != msg.sender)) {
+            revert OnlyOwnerPermittedOperation(msg.sender);
+        }
+        _;
+    }
 
     function initialize(
         address _contractDeployer, address _rewardsTreasury,
@@ -99,7 +100,7 @@ contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
         address treasuryLibrary, uint256 _tax, uint256 _deployTokenDefaultTax, address nftOwnershipContract
     ) public initializer {
         if (!ERC165CheckerUpgradeable.supportsInterface(_contractDeployer, type(IContractDeployerInterface).interfaceId)) {
-            revert ProvidedAddressNotCompatibleWithRequiredInterfaces();
+            revert ProvidedAddressNotCompatibleWithRequiredInterfaces(_contractDeployer, type(IContractDeployerInterface).interfaceId);
         }
 
         super.__Context_init_unchained();
@@ -111,7 +112,7 @@ contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
         contractDeployer = _contractDeployer;
         rewardsTreasury = _rewardsTreasury;
 
-        initializeTemplates(treasuryLibrary, tokenLibrary, tokenomicsLibrary, inflationLibrary, _tax);
+        _initializeTemplates(treasuryLibrary, tokenLibrary, tokenomicsLibrary, inflationLibrary, _tax);
 
         ownershipNFTCollection = nftOwnershipContract;
         deployTokenDefaultTax = _deployTokenDefaultTax;
@@ -129,24 +130,25 @@ contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
         return IUniswapV2Router02(router).WETH();
     }
 
-    function treasury(address token) public view returns (address) {
-        return tokenTreasury[token];
-    }
-
     function availableDexRouters() external view returns (address[] memory) {
         return whitelistedDexRouters.values();
     }
 
     // METHODS - MANAGER
-    function setLibraries(address _tokenomics, address _inflation, address _token, address _treasury) external onlyRole(LOCAL_MANAGER_ROLE) {
-        if (_tokenomics != address(0))
-            IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKENOMICS, 0, _tokenomics);
-        if (_inflation != address(0))
-            IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKENOMICS, 1, _inflation);
-        if (_token != address(0))
-            IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKEN, 0, _token);
-        if (_treasury != address(0))
-            IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TREASURY, 0, _treasury);
+    function setTokenLibrary(address _token) external onlyRole(LOCAL_MANAGER_ROLE) {
+        IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKEN, 0, _token);
+    }
+
+    function setDynamicTokenomicsLibrary(address _tokenomics) external onlyRole(LOCAL_MANAGER_ROLE) {
+        IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKENOMICS, 0, _tokenomics);
+    }
+
+    function setInflationLibrary(address _inflation) external onlyRole(LOCAL_MANAGER_ROLE) {
+        IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKENOMICS, 1, _inflation);
+    }
+
+    function setTreasuryLibrary(address _treasury) external onlyRole(LOCAL_MANAGER_ROLE) {
+        IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TREASURY, 0, _treasury);
     }
 
     function setTokenDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
@@ -157,12 +159,12 @@ contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
         minEthLiquidityAmount = amount;
     }
 
-    function overrideWethForRouter(address router, address weth) external onlyRole(LOCAL_MANAGER_ROLE) {
+    function overrideWethForRouter(address router, address _weth) external onlyRole(LOCAL_MANAGER_ROLE) {
         if (!whitelistedDexRouters.contains(router)) {
-            revert RouterNotPartOfWhitelist();
+            revert RouterNotPartOfWhitelist(router);
         }
 
-        wethOverrides[router] = weth;
+        wethOverrides[router] = _weth;
     }
 
     function setOwnerRewardsSettings(uint256 _ownerRewardsReleaseBlocks, uint256 _ownerRewardCycles) external onlyRole(LOCAL_MANAGER_ROLE) {
@@ -172,7 +174,7 @@ contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
 
     function addDexRouterToWhitelist(address router) external onlyRole(LOCAL_MANAGER_ROLE) {
         if (whitelistedDexRouters.contains(router)) {
-            revert RouterAlreadyPartOfWhitelist();
+            revert RouterAlreadyPartOfWhitelist(router);
         }
 
         whitelistedDexRouters.add(router);
@@ -180,7 +182,7 @@ contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
 
     function removeDexRouterFromWhitelist(address router) external onlyRole(LOCAL_MANAGER_ROLE) {
         if (!whitelistedDexRouters.contains(router)) {
-            revert RouterNotPartOfWhitelist();
+            revert RouterNotPartOfWhitelist(router);
         }
 
         whitelistedDexRouters.remove(router);
@@ -189,161 +191,176 @@ contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
     // METHODS - PUBLIC
     function deployBasicToken(
         string calldata name, string calldata ticker, uint256 supply, bytes32 refCode
-    ) payable external returns (address)
+    ) payable external returns (TokenDeployment memory)
     {
-        TokenDeployment memory deployment = deployToken(TokenLevel.Basic, refCode);
-        ITokenAsAServiceTemplate_v1(deployment.token).initialize(
-            name, ticker, deployment.tokenomics, deployment.inflation,
-            supply, 100, address(0), 0
+        TokenDeployment memory deployment = _deployToken(TokenLevel.Basic, refCode);
+
+        AddressUpgradeable.functionCall(
+            deployment.token,
+            abi.encodeWithSignature(
+                "initialize(string,string,address,address,uint256,uint256,address,uint256)",
+                name, ticker, deployment.tokenomics, deployment.inflation,
+                supply, 100, address(0), 0
+            )
         );
-        ITransferTokenomics_v1(deployment.tokenomics).initialize(deployment.token, rewardsTreasury, deployTokenDefaultTax);
-        ITransferTokenomics_v1(deployment.tokenomics).createTaxableConfig();
+        AddressUpgradeable.functionCall(
+            deployment.tokenomics,
+            abi.encodeWithSignature("initialize(address,address,uint256)",
+                deployment.token, rewardsTreasury, deployTokenDefaultTax
+            )
+        );
+        DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
 
         OwnableUpgradeable(deployment.token).transferOwnership(msg.sender);
 
         SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(deployment.token), msg.sender, IERC20Upgradeable(deployment.token).balanceOf(address(this)));
 
         emit TokenServiceDeployed(msg.sender, uint8(TokenLevel.Basic), deployment.token, deployment.tokenomics, deployment.inflation, deployment.treasury);
-        return deployment.token;
+        return deployment;
     }
 
     function deployHardCapToken(
         string calldata name, string calldata ticker, uint256 supply, uint256 ownerAmount,
         bool complexTax, string calldata metadataUrl, bytes32 refCode
-    ) payable external returns (address)
+    ) payable external returns (TokenDeployment memory)
     {
         if (supply.mul(10).div(100) < ownerAmount) {
-            revert OwnerShareGreaterThanAllowed();
+            revert OwnerShareGreaterThanAllowed(supply.mul(10).div(100), ownerAmount);
         }
-        TokenDeployment memory deployment = deployToken(complexTax ? TokenLevel.HardcapAdvanced : TokenLevel.HardcapSimple, refCode);
 
-        initializeTokenAndTokenomics(deployment, name, ticker, supply, 100, metadataUrl);
+        TokenDeployment memory deployment = _deployToken(complexTax ? TokenLevel.HardcapAdvanced : TokenLevel.HardcapSimple, refCode);
+
+        _initializeTokenAndTokenomics(deployment, name, ticker, supply, 100, metadataUrl);
+
         for (uint256 i = 0; i < (complexTax ? 3 : 1); i++) {
-            ITransferTokenomics_v1(deployment.tokenomics).createTaxableConfig();
+            DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
         }
-        initializeTreasury(deployment, ownerAmount);
+        _initializeTreasury(deployment, ownerAmount);
 
         emit TokenServiceDeployed(msg.sender, uint8(complexTax ? TokenLevel.HardcapAdvanced : TokenLevel.HardcapSimple), deployment.token, deployment.tokenomics, deployment.inflation, deployment.treasury);
-        return deployment.token;
+        return deployment;
     }
 
     function deployInflationaryToken(
         string calldata name, string calldata ticker, uint256 maxSupply,
         uint256 initialSupplyPercent, uint256 rewardRounds, uint256 blockPerCycle,
         uint256 ownerAmount, string calldata metadataUrl, bytes32 refCode
-    ) payable external returns (address) {
+    ) payable external returns (TokenDeployment memory) {
         if (maxSupply.mul(10).div(100) < ownerAmount) {
-            revert OwnerShareGreaterThanAllowed();
+            revert OwnerShareGreaterThanAllowed(maxSupply.mul(10).div(100), ownerAmount);
         }
 
         if (initialSupplyPercent < 50 && initialSupplyPercent > 90) {
-            revert InitialSupplyExceedsAllowedValues();
+            revert InitialSupplyExceedsAllowedValues(50, 90, initialSupplyPercent);
         }
 
-        TokenDeployment memory deployment = deployToken(TokenLevel.InflationAdvanced, refCode);
-        initializeTokenAndTokenomics(deployment, name, ticker, maxSupply, initialSupplyPercent, metadataUrl);
+        TokenDeployment memory deployment = _deployToken(TokenLevel.InflationAdvanced, refCode);
+        _initializeTokenAndTokenomics(deployment, name, ticker, maxSupply, initialSupplyPercent, metadataUrl);
 
         uint256 rewardsSupply = maxSupply.sub(maxSupply.mul(initialSupplyPercent).div(100));
-        IInflationTokenomics_v1(deployment.inflation).initialize(
-            deployment.token, rewardsTreasury, deployTokenDefaultTax,
-            rewardsSupply, rewardRounds, blockPerCycle
+        AddressUpgradeable.functionCall(
+            deployment.inflation,
+            abi.encodeWithSignature("initialize(address,address,uint256,uint256,uint256,uint256",
+                deployment.token, rewardsTreasury, deployTokenDefaultTax,
+                rewardsSupply, rewardRounds, blockPerCycle
+            )
         );
+
         for (uint256 i = 0; i < 3; i++) {
-            ITransferTokenomics_v1(deployment.tokenomics).createTaxableConfig();
+            DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
         }
-        initializeTreasury(deployment, ownerAmount);
+
+        _initializeTreasury(deployment, ownerAmount);
 
         emit TokenServiceDeployed(msg.sender, uint8(TokenLevel.InflationAdvanced), deployment.token, deployment.tokenomics, deployment.inflation, deployment.treasury);
-        return deployment.token;
+        return deployment;
     }
 
-    function addLiqudityToDexNative(address router, address token, uint256 tokenLiquidityAmount, uint256 ethLiquidityAmount) payable external {
-        _addLiquidityNative(router, token, tokenLiquidityAmount, ethLiquidityAmount);
+    function addLiqudityToDexNative(address router, address token, address treasury, uint256 tokenLiquidityAmount, uint256 ethLiquidityAmount) payable external {
+        _addLiquidityNative(router, token, treasury, tokenLiquidityAmount, ethLiquidityAmount);
     }
 
-    function addLiqudityToDexNativeFromWallet(address router, address token, uint256 tokenLiquidityAmount, uint256 ethLiquidityAmount) payable external {
+    function addLiqudityToDexNativeFromWallet(address router, address token, address treasury, uint256 tokenLiquidityAmount, uint256 ethLiquidityAmount) payable external {
         uint256 senderBalance = IERC20Upgradeable(token).balanceOf(msg.sender);
 
         if (senderBalance < tokenLiquidityAmount) {
-            revert SenderDoesNotHaveEnoughFunds();
+            revert SenderDoesNotHaveEnoughFunds(tokenLiquidityAmount, senderBalance);
         }
         if (IERC20Upgradeable(token).allowance(msg.sender, address(this)) < tokenLiquidityAmount) {
-            revert TokenAllowanceIsLessThenRequestedTransfer();
+            revert TokenAllowanceIsLessThenRequestedTransfer(
+                IERC20Upgradeable(token).allowance(msg.sender, address(this)),
+                tokenLiquidityAmount
+            );
         }
 
         SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(token), msg.sender, address(this), tokenLiquidityAmount);
 
-        _addLiquidityNative(router, token, tokenLiquidityAmount, ethLiquidityAmount);
+        _addLiquidityNative(router, token, treasury, tokenLiquidityAmount, ethLiquidityAmount);
     }
 
-    function upgrade(address token, bool treasury, bool transfer, bool inflation) payable external {
-        if (OwnableUpgradeable(token).owner() != msg.sender) {
-            revert OnlyOwnerPermittedOperation();
-        }
+    function upgradeTreasury(address treasury) payable external __requireSecondaryServicePermission(treasury, address(0)) {
+        IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_TREASURY, treasury);
+    }
 
-        if (treasury)
-            IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_TREASURY, tokenTreasury[token]);
-        if (transfer)
-            IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(
-                GROUP_TOKENOMICS, ITokenAsAServiceTemplate_v1(token).tokenomics()
-            );
-        if (inflation)
-            IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(
-                GROUP_TOKENOMICS, ITokenAsAServiceTemplate_v1(token).inflation()
-            );
+    function upgradeTokenomics(address tokenomics) payable external __requireSecondaryServicePermission(tokenomics, address(0)) {
+        IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_TOKENOMICS, tokenomics);
+    }
+
+    function upgradeInflation(address inflation) payable external __requireSecondaryServicePermission(inflation, address(0)) {
+        IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_TOKENOMICS, inflation);
     }
 
     //METHODS - PRIVATE
-    function _addLiquidityNative(address router, address token, uint256 tokenLiquidutyAmount, uint256 ethLiquidityAmount) internal {
-        if (tokenTreasury[token] == address(0)) {
-            revert NotPartOfDeployer();
-        }
-
+    function _addLiquidityNative(address router, address token, address treasury, uint256 tokenLiquidutyAmount, uint256 ethLiquidityAmount)
+    __requireSecondaryServicePermission(treasury, OwnableUpgradeable(token).owner())
+    internal {
         if (!whitelistedDexRouters.contains(router)) {
-            revert RouterNotPartOfWhitelist();
-        }
-        if (OwnableUpgradeable(token).owner() != msg.sender) {
-            revert OnlyOwnerPermittedOperation();
+            revert RouterNotPartOfWhitelist(router);
         }
 
-        bool alreadyListed = ITreasury(tokenTreasury[token]).isTokenListedOnDex(router);
+        bool alreadyListed = TokenTreasuryInterface(treasury).isTokenListedOnDex(router);
         if (!alreadyListed && ethLiquidityAmount < minEthLiquidityAmount) {
-            revert ETHLessThanRequiredMinimumLiquidity();
+            revert ETHLessThanRequiredMinimumLiquidity(minEthLiquidityAmount, ethLiquidityAmount);
         }
 
-        address weth = weth(router);
-        address pair = LiquidityUtils.getOrCreatePair(token, weth, router);
+        address _weth = weth(router);
+        address pair = LiquidityUtils.getOrCreatePair(token, _weth, router);
         if (!alreadyListed) {
-            address tokenomicsAddress = ITokenAsAServiceTemplate_v1(token).tokenomics();
-            ITransferTokenomics_v1(tokenomicsAddress).addTaxForPath(pair, address(0), 0);
-            ITransferTokenomics_v1(tokenomicsAddress).addTaxForPath(address(0), pair, ITransferTokenomics_v1(tokenomicsAddress).availableTaxableConfigurations() == 1 ? 0 : 1);
-            ITransferTokenomics_v1(tokenomicsAddress).addToWalletSizeWhitelist(pair);
-            ITransferTokenomics_v1(tokenomicsAddress).addToTransactionRestrictionWhitelist(pair);
-            ITransferTokenomics_v1(tokenomicsAddress).addToRouterAddressList(router, weth);
-            ITransferTokenomics_v1(tokenomicsAddress).addToTaxablePathWhitelist(tokenTreasury[token]);
+            address tokenomicsAddress = TokenAsAServiceInterface(token).tokenomics();
+            DynamicTokenomicsInterface(tokenomicsAddress).addTaxForPath(pair, address(0), 0);
+            DynamicTokenomicsInterface(tokenomicsAddress).addTaxForPath(address(0), pair, DynamicTokenomicsInterface(tokenomicsAddress).availableTaxableConfigurations() == 1 ? 0 : 1);
+            DynamicTokenomicsInterface(tokenomicsAddress).addToWalletSizeWhitelist(pair);
+            DynamicTokenomicsInterface(tokenomicsAddress).addToTransactionRestrictionWhitelist(pair);
+            DynamicTokenomicsInterface(tokenomicsAddress).addToRouterAddressList(router, _weth);
+            DynamicTokenomicsInterface(tokenomicsAddress).addToTaxablePathWhitelist(treasury);
         }
-        ITreasury(tokenTreasury[token]).addLiquidityV2{value: msg.value}(router, weth, tokenLiquidutyAmount, ethLiquidityAmount);
+        TokenTreasuryInterface(treasury).addLiquidityV2{value: msg.value}(router, _weth, tokenLiquidutyAmount, ethLiquidityAmount);
     }
 
-    function mintOwnerToken(string memory metadataUrl) internal returns (uint256) {
+    function _mintOwnerToken(string memory metadataUrl) internal returns (uint256) {
         uint256 ownerTokenId = OwnershipNFTCollection(ownershipNFTCollection).nextTokenId();
         OwnershipNFTCollection(ownershipNFTCollection).mint(msg.sender, metadataUrl);
         return ownerTokenId;
     }
 
-    function initializeTemplates(
+    function _initializeTemplates(
         address treasuryLibrary, address tokenLibrary,
         address tokenomicsLibrary, address inflationLibrary,
         uint256 _tax
     ) internal {
-        bytes4[] memory tokenInterfaces = new bytes4[](1);
+        bytes4[] memory tokenInterfaces = new bytes4[](3);
         tokenInterfaces[0] = type(IERC20Upgradeable).interfaceId;
-        bytes4[] memory transferTokenomicsInterfaces = new bytes4[](1);
-        transferTokenomicsInterfaces[0] = type(ITransferTokenomics_v1).interfaceId;
-        bytes4[] memory inflationInterfaces = new bytes4[](1);
-        inflationInterfaces[0] = type(IInflationTokenomics_v1).interfaceId;
-        bytes4[] memory treasuryInterfaces = new bytes4[](1);
-        treasuryInterfaces[0] = type(ITreasury).interfaceId;
+        tokenInterfaces[1] = type(TokenAsAServiceInterface).interfaceId;
+        tokenInterfaces[2] = type(ServiceDeployableInterface).interfaceId;
+        bytes4[] memory transferTokenomicsInterfaces = new bytes4[](2);
+        transferTokenomicsInterfaces[0] = type(DynamicTokenomicsInterface).interfaceId;
+        transferTokenomicsInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
+        bytes4[] memory inflationInterfaces = new bytes4[](2);
+        inflationInterfaces[0] = type(InflationInterface).interfaceId;
+        inflationInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
+        bytes4[] memory treasuryInterfaces = new bytes4[](2);
+        treasuryInterfaces[0] = type(TokenTreasuryInterface).interfaceId;
+        treasuryInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
 
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TREASURY, 0, treasuryInterfaces, treasuryLibrary, 0);
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TOKEN, 0, tokenInterfaces, tokenLibrary, _tax);
@@ -351,8 +368,8 @@ contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TOKENOMICS, 1, inflationInterfaces, inflationLibrary, 0);
     }
 
-    function deployToken(TokenLevel level, bytes32 refCode) internal returns (TokenDeployment memory) {
-        TokenDeployment memory deployment = TokenDeployment(
+    function _deployToken(TokenLevel level, bytes32 refCode) internal returns (TokenDeployment memory) {
+        return TokenDeployment(
             IContractDeployerInterface(contractDeployer).deployTemplate{value: msg.value}(msg.sender, GROUP_TOKEN, 0, bytes(''), refCode),
             IContractDeployerInterface(contractDeployer).deployTemplateWithProxy(msg.sender, GROUP_TOKENOMICS, 0, bytes(''), refCode),
             level >= TokenLevel.InflationAdvanced
@@ -362,39 +379,48 @@ contract TokenAsAServiceDeployer is Initializable, AccessControlUpgradeable {
                 ? IContractDeployerInterface(contractDeployer).deployTemplateWithProxy(msg.sender, GROUP_TREASURY, 0, bytes(''), refCode)
                 : address(0)
         );
-        return deployment;
     }
 
-    function initializeTreasury(TokenDeployment memory deployment, uint256 ownerAmount) internal {
-        ITreasury(deployment.treasury).initialize(
-            deployment.token,
-            ownerAmount.div(ownerRewardCycles),
-            ownerRewardCycles,
-            ownerRewardsReleaseBlocks
+    function _initializeTreasury(TokenDeployment memory deployment, uint256 ownerAmount) internal {
+        AddressUpgradeable.functionCall(
+            deployment.treasury,
+            abi.encodeWithSignature(
+                "initialize(address,uint256,uint256,uint256)",
+                deployment.token,
+                ownerAmount.div(ownerRewardCycles),
+                ownerRewardCycles,
+                ownerRewardsReleaseBlocks
+            )
         );
-        SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(deployment.token), deployment.treasury, IERC20Upgradeable(deployment.token).balanceOf(address(this)));
+        SafeERC20Upgradeable.safeTransfer(
+            IERC20Upgradeable(deployment.token),
+            deployment.treasury,
+            IERC20Upgradeable(deployment.token).balanceOf(address(this))
+        );
     }
 
-    function initializeInflation(
-        TokenDeployment memory deployment, uint256 maxSupply,
-        uint256 initialSupplyPercent, uint256 blockPerCycle,
-        uint256 rewardRounds
-    ) internal {
-
-    }
-
-    function initializeTokenAndTokenomics(
+    function _initializeTokenAndTokenomics(
         TokenDeployment memory deployment,
         string calldata name, string calldata ticker,
         uint256 maxSupply,
         uint256 initialSupplyPercent, string calldata metadataUrl
     ) internal {
-        ITokenAsAServiceTemplate_v1(deployment.token).initialize(
-            name, ticker, deployment.tokenomics, deployment.inflation,
-            maxSupply, initialSupplyPercent,
-            ownershipNFTCollection,
-            mintOwnerToken(metadataUrl)
+        AddressUpgradeable.functionCall(
+            deployment.token,
+            abi.encodeWithSignature("initialize(string,string,address,address,uint256,uint256,address,uint256)",
+                name, ticker, deployment.tokenomics, deployment.inflation,
+                maxSupply, initialSupplyPercent,
+                ownershipNFTCollection,
+                _mintOwnerToken(metadataUrl)
+            )
         );
-        ITransferTokenomics_v1(deployment.tokenomics).initialize(deployment.token, rewardsTreasury, deployTokenDefaultTax);
+        AddressUpgradeable.functionCall(
+            deployment.tokenomics,
+            abi.encodeWithSignature("initialize(address,address,uint256)",
+                deployment.token, rewardsTreasury, deployTokenDefaultTax
+            )
+        );
     }
+
+
 }

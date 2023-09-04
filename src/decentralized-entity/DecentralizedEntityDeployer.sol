@@ -10,12 +10,15 @@ import {DecentralizedEntityDeployerInterface} from "@unleashed/opendapps-cloud-i
 import {DecentralizedEntityInterface} from "@unleashed/opendapps-cloud-interfaces/decentralized-entity/DecentralizedEntityInterface.sol";
 import {GovernorInterface} from "@unleashed/opendapps-cloud-interfaces/governance/GovernorInterface.sol";
 import {IContractDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/IContractDeployerInterface.sol";
+import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
+import {SecondaryServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/SecondaryServiceDeployableInterface.sol";
 import {ITokenRewardsTreasury} from "@unleashed/opendapps-cloud-interfaces/treasury/ITokenRewardsTreasury.sol";
 
 import {OwnershipNFTCollection} from "../ownership/OwnershipNFTCollection.sol";
 import {OwnershipSharesNFTCollection} from "../ownership/OwnershipSharesNFTCollection.sol";
 
     error ProvidedAddressNotCompatibleWithRequiredInterfaces(address target, bytes4 interfaceId);
+    error OperationNotPermittedForWalletError(address target);
 
 contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, Initializable, AccessControlUpgradeable {
     uint256[150] private __gap;
@@ -60,8 +63,15 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
 
         super._grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 
-        REQUIRED_ENTITY_INTERFACES = [type(DecentralizedEntityInterface).interfaceId, type(GovernorInterface).interfaceId];
-        REQUIRED_REWARDS_TREASURY_INTERFACES = [type(ITokenRewardsTreasury).interfaceId];
+        REQUIRED_ENTITY_INTERFACES = [
+                    type(DecentralizedEntityInterface).interfaceId,
+                    type(GovernorInterface).interfaceId,
+                    type(ServiceDeployableInterface).interfaceId
+            ];
+        REQUIRED_REWARDS_TREASURY_INTERFACES = [
+                    type(ITokenRewardsTreasury).interfaceId,
+                    type(SecondaryServiceDeployableInterface).interfaceId
+            ];
 
         contractDeployer = _contractDeployer;
         singleOwnerNFTOwnershipContract = _singleOwnerNFTOwnershipContract;
@@ -157,6 +167,15 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
     }
 
     function upgradeTreasury(address treasury) payable external {
+        if (!ERC165CheckerUpgradeable.supportsInterface(treasury, type(SecondaryServiceDeployableInterface).interfaceId)) {
+            revert ProvidedAddressNotCompatibleWithRequiredInterfaces(treasury, type(IContractDeployerInterface).interfaceId);
+        }
+        address masterDeployable = SecondaryServiceDeployableInterface(treasury).masterDeployable();
+
+        if (!ServiceDeployableInterface(masterDeployable).canAccessFromDeployer(msg.sender)){
+            revert OperationNotPermittedForWalletError(msg.sender);
+        }
+
         IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(
             GROUP_REWARDS_TREASURY,
             treasury
