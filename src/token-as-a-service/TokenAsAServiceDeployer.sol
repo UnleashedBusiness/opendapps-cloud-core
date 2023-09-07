@@ -10,6 +10,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import {SafeERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/utils/SafeERC20Upgradeable.sol";
 import {ERC165CheckerUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165CheckerUpgradeable.sol";
+import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {EnumerableSetUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 
@@ -39,7 +40,7 @@ import {LiquidityUtils} from "./../lib/LiquidityUtils.sol";
     error OnlyOwnerPermittedOperation(address actual);
     error ETHLessThanRequiredMinimumLiquidity(uint256 expected, uint256 actual);
 
-contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializable, AccessControlUpgradeable {
+contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializable, ERC165Upgradeable, AccessControlUpgradeable {
     uint256[50] private __gap;
 
     enum TokenLevel {
@@ -119,6 +120,12 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         minEthLiquidityAmount = DEFAULT_MIN_ETH_LIQUIDITY_AMOUNT;
         ownerRewardsReleaseBlocks = DEFAULT_OWNER_REWARD_RELEASE_BLOCKS;
         ownerRewardCycles = DEFAULT_OWNER_REWARD_CYCLES;
+    }
+
+    function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable,ERC165Upgradeable) view returns (bool) {
+        return interfaceId == type(TokenAsAServiceDeployerInterface).interfaceId
+        || AccessControlUpgradeable.supportsInterface(interfaceId)
+            || ERC165Upgradeable.supportsInterface(interfaceId);
     }
 
     // VIEWS

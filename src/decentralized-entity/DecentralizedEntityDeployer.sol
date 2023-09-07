@@ -5,6 +5,7 @@ import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/Own
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {ERC165CheckerUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165CheckerUpgradeable.sol";
+import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 
 import {DecentralizedEntityDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/decentralized-entity/DecentralizedEntityDeployerInterface.sol";
 import {DecentralizedEntityInterface} from "@unleashed/opendapps-cloud-interfaces/decentralized-entity/DecentralizedEntityInterface.sol";
@@ -20,7 +21,7 @@ import {OwnershipSharesNFTCollection} from "../ownership/OwnershipSharesNFTColle
     error ProvidedAddressNotCompatibleWithRequiredInterfaces(address target, bytes4 interfaceId);
     error OperationNotPermittedForWalletError(address target);
 
-contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, Initializable, AccessControlUpgradeable {
+contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, Initializable, ERC165Upgradeable, AccessControlUpgradeable {
     uint256[150] private __gap;
 
     enum EntityType {
@@ -93,6 +94,12 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
             GROUP_REWARDS_TREASURY, uint8(RewardsTreasuryType.ShareBasedTreasury),
             REQUIRED_REWARDS_TREASURY_INTERFACES, rewardsTreasuryLibrary, 0
         );
+    }
+
+    function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable,ERC165Upgradeable) view returns (bool) {
+        return interfaceId == type(DecentralizedEntityDeployerInterface).interfaceId
+        || AccessControlUpgradeable.supportsInterface(interfaceId)
+            || ERC165Upgradeable.supportsInterface(interfaceId);
     }
 
     function setRewardsTreasuryLibraryAddress(address _libraryAddress) external onlyRole(LOCAL_MANAGER_ROLE) {
