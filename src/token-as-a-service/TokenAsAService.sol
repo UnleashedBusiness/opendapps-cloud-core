@@ -45,6 +45,7 @@ Initializable, ERC165Upgradeable, ERC20Upgradeable, OwnableUpgradeable {
     function supportsInterface(bytes4 interfaceId) public override view returns (bool) {
         return interfaceId == type(TokenAsAServiceInterface).interfaceId
         || interfaceId == type(IERC20Upgradeable).interfaceId
+        || interfaceId == type(ServiceDeployableInterface).interfaceId
             || super.supportsInterface(interfaceId);
     }
 
