@@ -23,7 +23,7 @@ import {TokenAsAServiceDeployerInterface} from "@unleashed/opendapps-cloud-inter
 import {TokenAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceInterface.sol";
 import {DynamicTokenomicsInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/DynamicTokenomicsInterface.sol";
 import {InflationInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/InflationInterface.sol";
-import {TokenTreasuryInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenTreasuryInterface.sol";
+import {TokenLiquidityTreasuryInterface} from "@unleashed/opendapps-cloud-interfaces/treasury/TokenLiquidityTreasuryInterface.sol";
 import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 import {SecondaryServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/SecondaryServiceDeployableInterface.sol";
 
@@ -325,7 +325,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
             revert RouterNotPartOfWhitelist(router);
         }
 
-        bool alreadyListed = TokenTreasuryInterface(treasury).isTokenListedOnDex(router);
+        bool alreadyListed = TokenLiquidityTreasuryInterface(treasury).isTokenListedOnDex(router);
         if (!alreadyListed && ethLiquidityAmount < minEthLiquidityAmount) {
             revert ETHLessThanRequiredMinimumLiquidity(minEthLiquidityAmount, ethLiquidityAmount);
         }
@@ -341,7 +341,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
             DynamicTokenomicsInterface(tokenomicsAddress).addToRouterAddressList(router, _weth);
             DynamicTokenomicsInterface(tokenomicsAddress).addToTaxablePathWhitelist(treasury);
         }
-        TokenTreasuryInterface(treasury).addLiquidityV2{value: msg.value}(router, _weth, tokenLiquidutyAmount, ethLiquidityAmount);
+        TokenLiquidityTreasuryInterface(treasury).addLiquidityV2{value: msg.value}(router, _weth, tokenLiquidutyAmount, ethLiquidityAmount);
     }
 
     function _mintOwnerToken(string memory metadataUrl) internal returns (uint256) {
@@ -366,7 +366,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         inflationInterfaces[0] = type(InflationInterface).interfaceId;
         inflationInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
         bytes4[] memory treasuryInterfaces = new bytes4[](2);
-        treasuryInterfaces[0] = type(TokenTreasuryInterface).interfaceId;
+        treasuryInterfaces[0] = type(TokenLiquidityTreasuryInterface).interfaceId;
         treasuryInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
 
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TREASURY, 0, treasuryInterfaces, treasuryLibrary, 0);
