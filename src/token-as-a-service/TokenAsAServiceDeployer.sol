@@ -267,7 +267,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         uint256 rewardsSupply = maxSupply.sub(maxSupply.mul(initialSupplyPercent).div(100));
         AddressUpgradeable.functionCall(
             deployment.inflation,
-            abi.encodeWithSignature("initialize(address,address,uint256,uint256,uint256,uint256",
+            abi.encodeWithSignature("initialize(address,address,uint256,uint256,uint256,uint256)",
                 deployment.token, rewardsTreasury, deployTokenDefaultTax,
                 rewardsSupply, rewardRounds, blockPerCycle
             )
