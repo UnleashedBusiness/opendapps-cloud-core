@@ -66,6 +66,7 @@ contract SingleOwnerEntity is DecentralizedEntityInterface, ServiceDeployableInt
 
     function supportsInterface(bytes4 interfaceId) public view virtual override(BaseGovernor, IERC165) returns (bool) {
         return type(DecentralizedEntityInterface).interfaceId == interfaceId
+        || type(ServiceDeployableInterface).interfaceId == interfaceId
         || type(IERC165).interfaceId == interfaceId
             || BaseGovernor.supportsInterface(interfaceId);
     }
