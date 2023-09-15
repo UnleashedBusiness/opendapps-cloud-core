@@ -8,16 +8,18 @@ import {SafeMathUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/mat
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {ERC165CheckerUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165CheckerUpgradeable.sol";
+import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {EnumerableSetUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 
 import {IContractDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/IContractDeployerInterface.sol";
 import {AssetBackingInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/AssetBackingInterface.sol";
+import {BaselineInsuranceDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/BaselineInsuranceDeployerInterface.sol";
 import {SmartSwapPriceModelInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/SmartSwapPriceModelInterface.sol";
 
     error ProvidedAddressNotCompatibleWithRequiredInterfaces();
     error TokenAlreadyHasBacking();
 
-contract BaselineInsuranceServiceDeployer is Initializable, AccessControlUpgradeable {
+contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDeployerInterface, ERC165Upgradeable, AccessControlUpgradeable {
     uint256[150] private __gap;
 
     event BaselineInsuranceServiceDeployed(address indexed creator, address indexed token, address contractAddress);
@@ -71,6 +73,12 @@ contract BaselineInsuranceServiceDeployer is Initializable, AccessControlUpgrade
             modelInterfaces, _tanXModelLibrary, 0
         );
 
+    }
+
+    function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable, ERC165Upgradeable) view returns (bool) {
+        return interfaceId == type(BaselineInsuranceDeployerInterface).interfaceId
+        || AccessControlUpgradeable.supportsInterface(interfaceId)
+            || ERC165Upgradeable.supportsInterface(interfaceId);
     }
 
     // METHODS - MANAGER
