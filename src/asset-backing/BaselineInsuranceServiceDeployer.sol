@@ -107,12 +107,16 @@ contract BaselineInsuranceServiceDeployer is Initializable, AccessControlUpgrade
 
         address backing = IContractDeployerInterface(contractDeployer).deployTemplate{value: msg.value}(
             msg.sender, GROUP_ASSET_BACKING, 0,
+            bytes(""),
+            refCode
+        );
+        AddressUpgradeable.functionCall(
+            backing,
             abi.encodeWithSignature(
                 "initialize(address,address,address,address,uint256,uint256)",
                 msg.sender, backingToken, erc20Token,
                 model, defaultThreshold, defaultBlocksDistance
-            ),
-            refCode
+            )
         );
         emit BaselineInsuranceServiceDeployed(msg.sender, erc20Token, backing);
         return backing;
@@ -135,12 +139,16 @@ contract BaselineInsuranceServiceDeployer is Initializable, AccessControlUpgrade
 
         address backing = IContractDeployerInterface(contractDeployer).deployTemplate{value: msg.value}(
             msg.sender, GROUP_ASSET_BACKING, 0,
+            bytes(""),
+            refCode
+        );
+        AddressUpgradeable.functionCall(
+            backing,
             abi.encodeWithSignature(
                 "initialize(address,address,address,address,uint256,uint256)",
                 msg.sender, backingToken, erc20Token,
                 model, defaultThreshold, defaultBlocksDistance
-            ),
-            refCode
+            )
         );
         emit BaselineInsuranceServiceDeployed(msg.sender, erc20Token, backing);
         return backing;

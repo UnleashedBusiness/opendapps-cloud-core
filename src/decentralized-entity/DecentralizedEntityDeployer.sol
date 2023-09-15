@@ -6,6 +6,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import {ERC165CheckerUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165CheckerUpgradeable.sol";
 import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
+import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 
 import {DecentralizedEntityDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/decentralized-entity/DecentralizedEntityDeployerInterface.sol";
 import {DecentralizedEntityInterface} from "@unleashed/opendapps-cloud-interfaces/decentralized-entity/DecentralizedEntityInterface.sol";
@@ -96,7 +97,7 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
         );
     }
 
-    function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable,ERC165Upgradeable) view returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable, ERC165Upgradeable) view returns (bool) {
         return interfaceId == type(DecentralizedEntityDeployerInterface).interfaceId
         || AccessControlUpgradeable.supportsInterface(interfaceId)
             || ERC165Upgradeable.supportsInterface(interfaceId);
@@ -116,14 +117,19 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
 
         address companyAddr = IContractDeployerInterface(contractDeployer).deployTemplate(
             msg.sender, GROUP_DECENTRALIZED_ENTITY, uint8(EntityType.SingleOwner),
+            bytes(""),
+            0x0
+        );
+        AddressUpgradeable.functionCall(
+            companyAddr,
             abi.encodeWithSignature(
                 "initialize(string,address,uint256)",
                 entityName,
                 singleOwnerNFTOwnershipContract,
                 ownerTokenID
-            ),
-            0x0
+            )
         );
+
         address treasuryAddress = _deployTreasury(msg.sender, companyAddr);
 
         emit DecentralizedEntityDeployed(msg.sender, uint8(EntityType.SingleOwner), companyAddr, treasuryAddress);
@@ -136,6 +142,11 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
 
         address companyAddr = IContractDeployerInterface(contractDeployer).deployTemplate(
             msg.sender, GROUP_DECENTRALIZED_ENTITY, uint8(EntityType.MultiSign),
+            bytes(""),
+            0x0
+        );
+        AddressUpgradeable.functionCall(
+            companyAddr,
             abi.encodeWithSignature(
                 "initialize(string,string,uint256,uint256,uint256,address[],address[])",
                 entityName,
@@ -145,9 +156,9 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
                 votingBlocksLength,
                 t,
                 new address[](0)
-            ),
-            0x0
+            )
         );
+
         address treasuryAddress = _deployTreasury(msg.sender, companyAddr);
         emit DecentralizedEntityDeployed(msg.sender, uint8(EntityType.MultiSign), companyAddr, treasuryAddress);
 
@@ -160,12 +171,16 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
 
         address companyAddr = IContractDeployerInterface(contractDeployer).deployTemplate(
             msg.sender, GROUP_DECENTRALIZED_ENTITY, uint8(EntityType.MultiSignShares),
+            bytes(""),
+            0x0
+        );
+        AddressUpgradeable.functionCall(
+            companyAddr,
             abi.encodeWithSignature(
                 "initialize(string,uint256,address,uint256)",
                 entityName, votingBlocksLength,
                 sharesEntityNftOwnershipContract, ownerTokenID
-            ),
-            0x0
+            )
         );
         address treasuryAddress = _deployTreasury(msg.sender, companyAddr);
 
@@ -179,7 +194,7 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
         }
         address masterDeployable = SecondaryServiceDeployableInterface(treasury).masterDeployable();
 
-        if (!ServiceDeployableInterface(masterDeployable).canAccessFromDeployer(msg.sender)){
+        if (!ServiceDeployableInterface(masterDeployable).canAccessFromDeployer(msg.sender)) {
             revert OperationNotPermittedForWalletError(msg.sender);
         }
 
@@ -192,11 +207,15 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
     function _deployTreasury(address owner, address companyAddr) internal returns (address) {
         address rewardsTreasury = IContractDeployerInterface(contractDeployer).deployTemplateWithProxy(
             owner, GROUP_REWARDS_TREASURY, uint8(RewardsTreasuryType.ShareBasedTreasury),
+            bytes(""),
+            0x0
+        );
+        AddressUpgradeable.functionCall(
+            rewardsTreasury,
             abi.encodeWithSignature(
                 "initialize(address)",
                 companyAddr
-            ),
-            0x0
+            )
         );
 
         OwnableUpgradeable(rewardsTreasury).transferOwnership(companyAddr);

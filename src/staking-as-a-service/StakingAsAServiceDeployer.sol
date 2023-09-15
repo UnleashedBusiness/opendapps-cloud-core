@@ -83,14 +83,13 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
         );
     }
 
-    function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable,ERC165Upgradeable) view returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable, ERC165Upgradeable) view returns (bool) {
         return interfaceId == type(StakingAsAServiceDeployerInterface).interfaceId
-            || AccessControlUpgradeable.supportsInterface(interfaceId)
+        || AccessControlUpgradeable.supportsInterface(interfaceId)
             || ERC165Upgradeable.supportsInterface(interfaceId);
     }
 
-
-    // METHODS - MANAGER  
+    // METHODS - MANAGER
     function setVaultLibraryAddress(address _libraryAddress) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeTemplate(
             GROUP_PERSONAL_VAULT,
@@ -126,13 +125,18 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
 
         address staking = IContractDeployerInterface(contractDeployer).deployTemplateWithProxy{value: msg.value}(
             msg.sender, GROUP_STAKING, 0,
+            bytes(""),
+            refCode
+        );
+        AddressUpgradeable.functionCall(
+            staking,
             abi.encodeWithSignature(
                 "initialize(address,address)",
                 IContractDeployerInterface(contractDeployer).currentTemplate(GROUP_PERSONAL_VAULT, 0),
                 erc20Token
-            ),
-            refCode
+            )
         );
+
         emit StakingServiceDeployed(msg.sender, erc20Token, staking);
 
         return staking;
