@@ -46,7 +46,8 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
     }
 
     receive() payable external {
-        availableMap[address(0)] = availableMap[address(0)].add(msg.value);
+        //TODO: CHECK
+        addToAvailable(address(0));
     }
 
     modifier onlyValidShares(address account, uint256 shares) {
