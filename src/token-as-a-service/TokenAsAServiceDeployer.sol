@@ -33,6 +33,7 @@ import {LiquidityUtils} from "./../lib/LiquidityUtils.sol";
     error ProvidedAddressNotCompatibleWithRequiredInterfaces(address target, bytes4 interfaceId);
     error RouterNotPartOfWhitelist(address router);
     error RouterAlreadyPartOfWhitelist(address router);
+    error TotalSupplyBelowAllowedValues(uint256 min, uint256 actual);
     error OwnerShareGreaterThanAllowed(uint256 max, uint256 actual);
     error InitialSupplyExceedsAllowedValues(uint256 min, uint256 max, uint256 actual);
     error SenderDoesNotHaveEnoughFunds(uint256 expected, uint256 actual);
@@ -59,7 +60,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
     bytes32 public constant GROUP_TOKEN = keccak256("Token");
     bytes32 public constant GROUP_TREASURY = keccak256("TREASURY");
 
-    uint256 public constant DEFAULT_MIN_ETH_LIQUIDITY_AMOUNT = 1 * 10 ** 18;
+    uint256 public constant DEFAULT_MIN_TOTAL_SUPPLY = 1 ether;
+    uint256 public constant DEFAULT_MIN_ETH_LIQUIDITY_AMOUNT = 1 ether;
     uint256 public constant DEFAULT_OWNER_REWARD_RELEASE_BLOCKS = 840000; //~30 days on BSC
     uint256 public constant DEFAULT_OWNER_REWARD_CYCLES = 12; //~1 year on BSC
 
@@ -76,6 +78,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
     EnumerableSetUpgradeable.AddressSet internal whitelistedDexRouters;
     mapping(address => address) private wethOverrides;
+
+    uint256 public minTotalSupply;
 
     using SafeMathUpgradeable for uint256;
     using AddressUpgradeable for address;
@@ -120,6 +124,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         minEthLiquidityAmount = DEFAULT_MIN_ETH_LIQUIDITY_AMOUNT;
         ownerRewardsReleaseBlocks = DEFAULT_OWNER_REWARD_RELEASE_BLOCKS;
         ownerRewardCycles = DEFAULT_OWNER_REWARD_CYCLES;
+        minTotalSupply = DEFAULT_MIN_TOTAL_SUPPLY;
     }
 
     function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable,ERC165Upgradeable) view returns (bool) {
@@ -166,6 +171,14 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         minEthLiquidityAmount = amount;
     }
 
+    function setMinTotalSupply(uint256 amount) external onlyRole(LOCAL_MANAGER_ROLE) {
+        minTotalSupply = amount;
+    }
+
+    function setTokenTreasuryAddress(address _treasury) external onlyRole(LOCAL_MANAGER_ROLE)  {
+        rewardsTreasury = _treasury;
+    }
+
     function overrideWethForRouter(address router, address _weth) external onlyRole(LOCAL_MANAGER_ROLE) {
         if (!whitelistedDexRouters.contains(router)) {
             revert RouterNotPartOfWhitelist(router);
@@ -200,6 +213,10 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         string calldata name, string calldata ticker, uint256 supply, bytes32 refCode
     ) payable external returns (TokenDeployment memory)
     {
+        if (minTotalSupply > supply) {
+            revert TotalSupplyBelowAllowedValues(minTotalSupply, supply);
+        }
+
         TokenDeployment memory deployment = _deployToken(TokenLevel.Basic, refCode);
 
         AddressUpgradeable.functionCall(
@@ -231,6 +248,10 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         bool complexTax, string calldata metadataUrl, bytes32 refCode
     ) payable external returns (TokenDeployment memory)
     {
+        if (minTotalSupply > supply) {
+            revert TotalSupplyBelowAllowedValues(minTotalSupply, supply);
+        }
+
         if (supply.mul(10).div(100) < ownerAmount) {
             revert OwnerShareGreaterThanAllowed(supply.mul(10).div(100), ownerAmount);
         }
@@ -253,6 +274,10 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         uint256 initialSupplyPercent, uint256 rewardRounds, uint256 blockPerCycle,
         uint256 ownerAmount, string calldata metadataUrl, bytes32 refCode
     ) payable external returns (TokenDeployment memory) {
+        if (minTotalSupply > maxSupply) {
+            revert TotalSupplyBelowAllowedValues(minTotalSupply, maxSupply);
+        }
+
         if (maxSupply.mul(10).div(100) < ownerAmount) {
             revert OwnerShareGreaterThanAllowed(maxSupply.mul(10).div(100), ownerAmount);
         }
