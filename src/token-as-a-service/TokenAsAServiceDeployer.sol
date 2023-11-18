@@ -175,6 +175,10 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         minTotalSupply = amount;
     }
 
+    function setTokenTreasuryAddress(address _treasury) external onlyRole(LOCAL_MANAGER_ROLE)  {
+        rewardsTreasury = _treasury;
+    }
+
     function overrideWethForRouter(address router, address _weth) external onlyRole(LOCAL_MANAGER_ROLE) {
         if (!whitelistedDexRouters.contains(router)) {
             revert RouterNotPartOfWhitelist(router);
