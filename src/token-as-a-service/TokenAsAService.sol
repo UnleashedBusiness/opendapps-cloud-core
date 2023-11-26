@@ -26,6 +26,10 @@ Initializable, ERC165Upgradeable, ERC20Upgradeable, OwnableUpgradeable {
 
     event Burn(uint256 amount);
 
+    uint256 constant public MAX_TAX_TOKENOMICS = 10;
+    uint256 constant public AUTOVALID_WALLET_SIZE_PERCENT = 1;
+    uint256 constant public AUTOVALID_TRANSACTION_SIZE_PERCENT = 1;
+
     uint256 public maxSupply;
     uint256 public initialSupply;
 
@@ -140,7 +144,10 @@ Initializable, ERC165Upgradeable, ERC20Upgradeable, OwnableUpgradeable {
             }
         }
 
-        if (!DynamicTokenomicsInterface(tokenomics).isTransactionValid(sender, recipient, amount)) {
+        bool isValidTransaction = (amount < totalSupply().mul(AUTOVALID_TRANSACTION_SIZE_PERCENT).div(100)
+            && balanceOf(recipient).add(amount) < totalSupply().mul(AUTOVALID_WALLET_SIZE_PERCENT).div(100))
+            || DynamicTokenomicsInterface(tokenomics).isTransactionValid(sender, recipient, amount);
+        if (!isValidTransaction) {
             revert TransactionInvalidError(sender, recipient, amount);
         }
 
@@ -165,7 +172,9 @@ Initializable, ERC165Upgradeable, ERC20Upgradeable, OwnableUpgradeable {
     }
 
     function _getTax(address from, address to) internal view returns (uint256) {
+        uint256 taxScaling = DynamicTokenomicsInterface(tokenomics).taxScaling();
+        uint256 maxTax = MAX_TAX_TOKENOMICS.mul(taxScaling);
         uint256 taxU = DynamicTokenomicsInterface(tokenomics).totalTax(from, to);
-        return taxU > 10 ? 1 : taxU;
+        return taxU > maxTax ? maxTax : taxU;
     }
 }
