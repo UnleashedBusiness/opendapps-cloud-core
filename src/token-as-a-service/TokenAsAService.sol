@@ -26,6 +26,10 @@ Initializable, ERC165Upgradeable, ERC20Upgradeable, OwnableUpgradeable {
 
     event Burn(uint256 amount);
 
+    uint256 constant public MAX_TAX_TOKENOMICS = 10;
+    uint256 constant public AUTOVALID_WALLET_SIZE_PERCENT = 1;
+    uint256 constant public AUTOVALID_TRANSACTION_SIZE_PERCENT = 1;
+
     uint256 public maxSupply;
     uint256 public initialSupply;
 
@@ -140,13 +144,16 @@ Initializable, ERC165Upgradeable, ERC20Upgradeable, OwnableUpgradeable {
             }
         }
 
-        if (!DynamicTokenomicsInterface(tokenomics).isTransactionValid(sender, recipient, amount)) {
+        bool isValidTransaction = (amount < totalSupply().mul(AUTOVALID_TRANSACTION_SIZE_PERCENT).div(100)
+            && balanceOf(recipient).add(amount) < totalSupply().mul(AUTOVALID_WALLET_SIZE_PERCENT).div(100))
+            || DynamicTokenomicsInterface(tokenomics).isTransactionValid(sender, recipient, amount);
+        if (!isValidTransaction) {
             revert TransactionInvalidError(sender, recipient, amount);
         }
 
         // Dynamic tokenomics trigger
         if (sender != tokenomics && recipient != tokenomics) {
-            uint256 taxAmount = amount.mul(_getTax(sender, recipient)).div(100);
+            uint256 taxAmount = _getTaxAmount(sender, recipient, amount);
 
             if (taxAmount > 0) {
                 amount = amount.sub(taxAmount);
@@ -164,8 +171,17 @@ Initializable, ERC165Upgradeable, ERC20Upgradeable, OwnableUpgradeable {
         emit Burn(amount);
     }
 
-    function _getTax(address from, address to) internal view returns (uint256) {
-        uint256 taxU = DynamicTokenomicsInterface(tokenomics).totalTax(from, to);
-        return taxU > 10 ? 1 : taxU;
+    function _getTax(address from, address to) internal view returns (uint256 taxU, uint256 taxScaling) {
+        taxScaling = DynamicTokenomicsInterface(tokenomics).taxScaling();
+        uint256 maxTax = MAX_TAX_TOKENOMICS.mul(taxScaling);
+        taxU = DynamicTokenomicsInterface(tokenomics).totalTax(from, to);
+        taxU = taxU > maxTax ? maxTax : taxU;
+    }
+
+    function _getTaxAmount(address from, address to, uint256 amount) internal view returns (uint256) {
+        (uint256 taxU, uint256 taxScaling) = _getTax(from, to);
+        if (taxU <= 0) return 0;
+
+        return amount.mul(taxU).div(taxScaling.mul(100));
     }
 }
