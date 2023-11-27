@@ -69,6 +69,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
     address public rewardsTreasury;
 
     uint256 public deployTokenDefaultTax;
+    uint256 public deployTokenDefaultInflationTax;
     uint256 public minEthLiquidityAmount;
 
     uint256 public ownerRewardsReleaseBlocks;
@@ -120,7 +121,10 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         _initializeTemplates(treasuryLibrary, tokenLibrary, tokenomicsLibrary, inflationLibrary, _tax);
 
         ownershipNFTCollection = nftOwnershipContract;
+
         deployTokenDefaultTax = _deployTokenDefaultTax;
+        deployTokenDefaultInflationTax = _deployTokenDefaultTax / 10;
+
         minEthLiquidityAmount = DEFAULT_MIN_ETH_LIQUIDITY_AMOUNT;
         ownerRewardsReleaseBlocks = DEFAULT_OWNER_REWARD_RELEASE_BLOCKS;
         ownerRewardCycles = DEFAULT_OWNER_REWARD_CYCLES;
@@ -293,7 +297,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         AddressUpgradeable.functionCall(
             deployment.inflation,
             abi.encodeWithSignature("initialize(address,address,uint256,uint256,uint256,uint256)",
-                deployment.token, rewardsTreasury, deployTokenDefaultTax,
+                deployment.token, rewardsTreasury, deployTokenDefaultInflationTax,
                 rewardsSupply, rewardRounds, blockPerCycle
             )
         );
