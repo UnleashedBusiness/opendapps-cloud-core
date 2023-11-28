@@ -131,7 +131,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         minTotalSupply = DEFAULT_MIN_TOTAL_SUPPLY;
     }
 
-    function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable,ERC165Upgradeable) view returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable, ERC165Upgradeable) view returns (bool) {
         return interfaceId == type(TokenAsAServiceDeployerInterface).interfaceId
         || AccessControlUpgradeable.supportsInterface(interfaceId)
             || ERC165Upgradeable.supportsInterface(interfaceId);
@@ -179,7 +179,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         minTotalSupply = amount;
     }
 
-    function setTokenTreasuryAddress(address _treasury) external onlyRole(LOCAL_MANAGER_ROLE)  {
+    function setTokenTreasuryAddress(address _treasury) external onlyRole(LOCAL_MANAGER_ROLE) {
         rewardsTreasury = _treasury;
     }
 
@@ -334,6 +334,17 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         _addLiquidityNative(router, token, treasury, tokenLiquidityAmount, ethLiquidityAmount);
     }
 
+    function enableTokenomicsForDEX(address router, address token) external
+    {
+        if (msg.sender != OwnableUpgradeable(token).owner()) {
+            revert OnlyOwnerPermittedOperation(msg.sender);
+        }
+
+        address _weth = weth(router);
+        address pair = LiquidityUtils.getOrCreatePair(token, _weth, router);
+        _enableTokenomicsForDEX(router, token, pair, _weth, address(0));
+    }
+
     function upgradeTreasury(address treasury) payable external __requireSecondaryServicePermission(treasury, address(0)) {
         IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_TREASURY, treasury);
     }
@@ -362,15 +373,21 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         address _weth = weth(router);
         address pair = LiquidityUtils.getOrCreatePair(token, _weth, router);
         if (!alreadyListed) {
-            address tokenomicsAddress = TokenAsAServiceInterface(token).tokenomics();
-            DynamicTokenomicsInterface(tokenomicsAddress).addTaxForPath(pair, address(0), 0);
-            DynamicTokenomicsInterface(tokenomicsAddress).addTaxForPath(address(0), pair, DynamicTokenomicsInterface(tokenomicsAddress).availableTaxableConfigurations() == 1 ? 0 : 1);
-            DynamicTokenomicsInterface(tokenomicsAddress).addToWalletSizeWhitelist(pair);
-            DynamicTokenomicsInterface(tokenomicsAddress).addToTransactionRestrictionWhitelist(pair);
-            DynamicTokenomicsInterface(tokenomicsAddress).addToRouterAddressList(router, _weth);
-            DynamicTokenomicsInterface(tokenomicsAddress).addToTaxablePathWhitelist(treasury);
+            _enableTokenomicsForDEX(router, token, pair, _weth, treasury);
         }
         TokenLiquidityTreasuryInterface(treasury).addLiquidityV2{value: msg.value}(router, _weth, tokenLiquidutyAmount, ethLiquidityAmount);
+    }
+
+    function _enableTokenomicsForDEX(address router, address token, address pair, address _weth, address treasury) internal {
+        address tokenomicsAddress = TokenAsAServiceInterface(token).tokenomics();
+        DynamicTokenomicsInterface(tokenomicsAddress).addTaxForPath(pair, address(0), 0);
+        DynamicTokenomicsInterface(tokenomicsAddress).addTaxForPath(address(0), pair, DynamicTokenomicsInterface(tokenomicsAddress).availableTaxableConfigurations() == 1 ? 0 : 1);
+        DynamicTokenomicsInterface(tokenomicsAddress).addToWalletSizeWhitelist(pair);
+        DynamicTokenomicsInterface(tokenomicsAddress).addToTransactionRestrictionWhitelist(pair);
+        DynamicTokenomicsInterface(tokenomicsAddress).addToRouterAddressList(router, _weth);
+        if (treasury != address(0)) {
+            DynamicTokenomicsInterface(tokenomicsAddress).addToTaxablePathWhitelist(treasury);
+        }
     }
 
     function _mintOwnerToken(string memory metadataUrl) internal returns (uint256) {
