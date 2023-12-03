@@ -45,7 +45,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         _disableInitializers();
     }
 
-    receive() payable external {
+    receive() payable virtual external {
         //TODO: CHECK
         addToAvailable(address(0));
     }
