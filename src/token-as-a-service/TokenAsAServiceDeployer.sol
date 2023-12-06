@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: proprietary
+// SPDX-License-Identifier: BSL-1.1
 pragma solidity ^0.8.7;
 
 import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: BSL-1.1
 pragma solidity ^0.8.7;
 
 import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
@@ -6,7 +7,7 @@ import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Ini
 import {StringsUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/StringsUpgradeable.sol";
 
 import {SafeMathUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/math/SafeMathUpgradeable.sol";
-import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
+import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 import {ERC165CheckerUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165CheckerUpgradeable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 
@@ -22,7 +23,7 @@ import {OwnershipNFTCollection} from "./../ownership/OwnershipNFTCollection.sol"
     error TransactionInvalidError(address from, address to, uint256 size);
 
 contract TokenAsAService is TokenAsAServiceInterface, ServiceDeployableInterface,
-Initializable, ERC165Upgradeable, ERC20Upgradeable, OwnableUpgradeable {
+Initializable, ERC165, ERC20Upgradeable, OwnableUpgradeable {
 
     event Burn(uint256 amount);
 
@@ -42,8 +43,8 @@ Initializable, ERC165Upgradeable, ERC20Upgradeable, OwnableUpgradeable {
 
     using SafeMathUpgradeable for uint256;
 
-    constructor() {
-        _disableInitializers();
+    constructor(bool isTemplate) {
+        if (isTemplate) _disableInitializers();
     }
 
     function supportsInterface(bytes4 interfaceId) public override view returns (bool) {

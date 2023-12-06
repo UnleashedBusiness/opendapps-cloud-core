@@ -1,5 +1,5 @@
-pragma solidity ~0.8.7;
-
+// SPDX-License-Identifier: BSL-1.1
+pragma solidity ^0.8.7;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
