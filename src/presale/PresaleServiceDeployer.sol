@@ -88,7 +88,7 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
         presaleControllerDefaultTax = _presaleControllerDefaultTax;
 
         bytes4[] memory presaleInterfaces = new bytes4[](2);
-        presaleInterfaces[0] = type(PresaleServiceDeployerInterface).interfaceId;
+        presaleInterfaces[0] = type(PresaleServiceInterface).interfaceId;
         presaleInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
 
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_PRESALE, uint8(PresaleType.Basic), presaleInterfaces, presaleLibrary, _tax);
