@@ -124,7 +124,7 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
     // METHODS - PUBLIC
     function deploy(address token, address exchangeToken, bytes32 refCode) payable external returns (address)
     {
-        address deployment = IContractDeployerInterface(contractDeployer).deployTemplate{value: msg.value}(
+        address deployment = IContractDeployerInterface(contractDeployer).deployTemplateWithProxy{value: msg.value}(
             msg.sender, GROUP_PRESALE, uint8(PresaleType.Basic), bytes(''), refCode
         );
 
@@ -141,5 +141,12 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
 
         emit PresaleDeployed(msg.sender, uint8(PresaleType.Basic), token, deployment);
         return deployment;
+    }
+
+    function upgrade(address presale) external __requireSecondaryServicePermission(presale, address(0)) {
+        IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(
+            GROUP_PRESALE,
+            presale
+        );
     }
 }
