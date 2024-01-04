@@ -131,7 +131,7 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
         Address.functionCall(
             deployment,
             abi.encodeWithSignature(
-                "initialize(address,address,uint256,uint256)",
+                "initialize(address,address,uint256,uint256,address,uint256)",
                 token, exchangeToken, minBlocksForStart, minBlocksDuration, rewardsTreasury, presaleControllerDefaultTax
             )
         );
