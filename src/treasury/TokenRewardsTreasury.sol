@@ -219,6 +219,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         uint256 nonPendingPayment = amount.sub(pending[account][token]);
         released[account][token] += nonPendingPayment;
         pending[account][token] = 0;
+        lastTokenHolding[token] -= amount;
     }
 
     function pendingPayment(address account, address token) internal view returns (uint256) {
@@ -228,11 +229,16 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
     }
 
     function addToAvailable(address token) internal {
-        uint256 diff = token == address(0)
-            ? payable(address(this)).balance.sub(lastTokenHolding[token])
-            : IERC20Upgradeable(token).balanceOf(address(this)).sub(lastTokenHolding[token]);
-        availableMap[token] = availableMap[token].add(diff);
-        lastTokenHolding[token] = lastTokenHolding[token].add(diff);
+        uint256 currentHolding = token == address(0)
+            ? payable(address(this)).balance
+            : IERC20Upgradeable(token).balanceOf(address(this));
+        if (currentHolding < lastTokenHolding[token]) {
+            lastTokenHolding[token] = currentHolding;
+        } else {
+            uint256 diff = currentHolding.sub(lastTokenHolding[token]);
+            availableMap[token] = availableMap[token].add(diff);
+            lastTokenHolding[token] = lastTokenHolding[token].add(diff);
+        }
     }
 
     uint256[50] private __gap;
