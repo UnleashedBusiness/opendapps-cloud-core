@@ -15,6 +15,7 @@ import "./BaseGovernor.sol";
 
     error OnlyGovernancePermitted(address expected, address actual);
     error ProposerVotesBelowProposalThreshold(uint256 expected, uint256 actual);
+    error VotingPowerBelowVotingThreshold(address sender);
     error InvalidProposalLength(uint256 expected, uint256 actual);
     error EmptyProposal();
     error ProposalAlreadyExists(uint256 proposalId);
@@ -297,6 +298,10 @@ IERC1155ReceiverUpgradeable, BaseGovernor {
         }
 
         uint256 weight = _getVotes(voter, proposal.voteStart.getDeadline());
+        if (weight <= 0) {
+            revert VotingPowerBelowVotingThreshold(voter);
+        }
+
         _countVote(proposalId, voter, weight);
 
         emit VoteCast(voter, proposalId);
