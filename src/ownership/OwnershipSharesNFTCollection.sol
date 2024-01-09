@@ -24,6 +24,12 @@ contract OwnershipSharesNFTCollection is GovernanceSharesOwnershipInterface, Own
         emit ContractURIUpdated(__contractURI);
     }
 
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+        return
+            interfaceId == type(GovernanceSharesOwnershipInterface).interfaceId ||
+            super.supportsInterface(interfaceId);
+    }
+
     function nextTokenId() external view returns (uint256) {
         return _tokenIdTracker.current();
     }
