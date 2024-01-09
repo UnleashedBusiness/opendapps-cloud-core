@@ -108,6 +108,22 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         return pendingPayment(account, token);
     }
 
+    function changeController(address _controller) external onlyOwner {
+        resetShareValues();
+
+        percents[_controller] = percents[controller];
+        percents[controller] = 0;
+
+        for (uint256 k = 0; k < rewardTokensCache.length(); k++) {
+            address token = rewardTokensCache.at(k);
+
+            pending[_controller][token] = pending[controller][token];
+            pending[controller][token] = 0;
+        }
+
+        controller = _controller;
+    }
+
     function addRewardToken(address token) external onlyOwner {
         if (rewardTokensCache.contains(token)) {
             revert TokenAlreadyAddedAsRewardsError(token);
