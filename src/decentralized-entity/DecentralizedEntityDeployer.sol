@@ -103,10 +103,38 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
             || ERC165Upgradeable.supportsInterface(interfaceId);
     }
 
+    function setSharesEntityNftOwnershipContractAddress(address _address) external onlyRole(LOCAL_MANAGER_ROLE) {
+        sharesEntityNftOwnershipContract = _address;
+    }
+
     function setRewardsTreasuryLibraryAddress(address _libraryAddress) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeTemplate(
             GROUP_REWARDS_TREASURY,
             uint8(RewardsTreasuryType.ShareBasedTreasury),
+            _libraryAddress
+        );
+    }
+
+    function setMultiSignSharesEntityLibraryAddress(address _libraryAddress) external onlyRole(LOCAL_MANAGER_ROLE) {
+        IContractDeployerInterface(contractDeployer).upgradeTemplate(
+            GROUP_DECENTRALIZED_ENTITY,
+            uint8(EntityType.MultiSignShares),
+            _libraryAddress
+        );
+    }
+
+    function setMultiSignEntityLibraryAddress(address _libraryAddress) external onlyRole(LOCAL_MANAGER_ROLE) {
+        IContractDeployerInterface(contractDeployer).upgradeTemplate(
+            GROUP_DECENTRALIZED_ENTITY,
+            uint8(EntityType.MultiSign),
+            _libraryAddress
+        );
+    }
+
+    function setSingleOwnerEntityLibraryAddress(address _libraryAddress) external onlyRole(LOCAL_MANAGER_ROLE) {
+        IContractDeployerInterface(contractDeployer).upgradeTemplate(
+            GROUP_DECENTRALIZED_ENTITY,
+            uint8(EntityType.SingleOwner),
             _libraryAddress
         );
     }
