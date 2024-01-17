@@ -345,6 +345,17 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         _enableTokenomicsForDEX(router, token, pair, _weth, address(0));
     }
 
+    function enableTokenomicsForDEXWithCustomPair(address router, address token, address pairedWith) external
+    {
+        if (msg.sender != OwnableUpgradeable(token).owner()) {
+            revert OnlyOwnerPermittedOperation(msg.sender);
+        }
+
+        address _weth = weth(router);
+        address pair = LiquidityUtils.getOrCreatePair(token, pairedWith, router);
+        _enableTokenomicsForDEX(router, token, pair, _weth, address(0));
+    }
+
     function upgradeTreasury(address treasury) payable external __requireSecondaryServicePermission(treasury, address(0)) {
         IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_TREASURY, treasury);
     }
