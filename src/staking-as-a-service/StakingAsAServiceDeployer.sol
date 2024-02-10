@@ -10,6 +10,8 @@ import {ERC165CheckerUpgradeable} from "@openzeppelin/contracts-upgradeable/util
 import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {EnumerableSetUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 
+import {IERC20Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+
 import {IContractDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/IContractDeployerInterface.sol";
 import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 import {SecondaryServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/SecondaryServiceDeployableInterface.sol";
@@ -116,11 +118,8 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
 
     // METHODS - PUBLIC
     function deploy(address erc20Token, bytes32 refCode) payable external returns (address) {
-        if (!ERC165CheckerUpgradeable.supportsInterface(erc20Token, type(TokenAsAServiceInterface).interfaceId)) {
-            revert ProvidedAddressNotCompatibleWithRequiredInterfaces(erc20Token, type(TokenAsAServiceInterface).interfaceId);
-        }
-        if (TokenAsAServiceInterface(erc20Token).owner() != msg.sender) {
-            revert PermittedForOwnerOnly();
+        if (!ERC165CheckerUpgradeable.supportsInterface(erc20Token, type(IERC20Upgradeable).interfaceId)) {
+            revert ProvidedAddressNotCompatibleWithRequiredInterfaces(erc20Token, type(IERC20Upgradeable).interfaceId);
         }
 
         address staking = IContractDeployerInterface(contractDeployer).deployTemplateWithProxy{value: msg.value}(
@@ -128,6 +127,7 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
             bytes(""),
             refCode
         );
+
         AddressUpgradeable.functionCall(
             staking,
             abi.encodeWithSignature(
@@ -136,6 +136,10 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
                 erc20Token
             )
         );
+
+        if (!ERC165CheckerUpgradeable.supportsInterface(erc20Token, type(ServiceDeployableInterface).interfaceId)) {
+            OwnableUpgradeable(staking).transferOwnership(msg.sender);
+        }
 
         emit StakingServiceDeployed(msg.sender, erc20Token, staking);
 
