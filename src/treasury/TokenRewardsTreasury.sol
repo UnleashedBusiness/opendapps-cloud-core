@@ -248,6 +248,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         uint256 currentHolding = token == address(0)
             ? payable(address(this)).balance
             : IERC20Upgradeable(token).balanceOf(address(this));
+
         if (currentHolding < lastTokenHolding[token]) {
             lastTokenHolding[token] = currentHolding;
         } else {
