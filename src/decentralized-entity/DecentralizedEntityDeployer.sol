@@ -14,7 +14,6 @@ import {GovernorInterface} from "@unleashed/opendapps-cloud-interfaces/governanc
 import {IContractDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/IContractDeployerInterface.sol";
 import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 import {SecondaryServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/SecondaryServiceDeployableInterface.sol";
-import {ITokenRewardsTreasury} from "@unleashed/opendapps-cloud-interfaces/treasury/ITokenRewardsTreasury.sol";
 
 import {OwnershipNFTCollection} from "../ownership/OwnershipNFTCollection.sol";
 import {OwnershipSharesNFTCollection} from "../ownership/OwnershipSharesNFTCollection.sol";
@@ -52,8 +51,7 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
     function initialize(
         address _contractDeployer,
         address singleOwnerLibrary, address multiSignLibrary,
-        address multiSignSharesLibrary, address rewardsTreasuryLibrary,
-        address _singleOwnerNFTOwnershipContract, address _sharesEntityNftOwnershipContract
+        address multiSignSharesLibrary, address _singleOwnerNFTOwnershipContract, address _sharesEntityNftOwnershipContract
     ) public initializer {
         if (!ERC165CheckerUpgradeable.supportsInterface(_contractDeployer, type(IContractDeployerInterface).interfaceId)) {
             revert ProvidedAddressNotCompatibleWithRequiredInterfaces(_contractDeployer, type(IContractDeployerInterface).interfaceId);
@@ -69,10 +67,6 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
                     type(DecentralizedEntityInterface).interfaceId,
                     type(GovernorInterface).interfaceId,
                     type(ServiceDeployableInterface).interfaceId
-            ];
-        REQUIRED_REWARDS_TREASURY_INTERFACES = [
-                    type(ITokenRewardsTreasury).interfaceId,
-                    type(SecondaryServiceDeployableInterface).interfaceId
             ];
 
         contractDeployer = _contractDeployer;
@@ -90,10 +84,6 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
         IContractDeployerInterface(contractDeployer).registerTemplate(
             GROUP_DECENTRALIZED_ENTITY, uint8(EntityType.MultiSignShares),
             REQUIRED_ENTITY_INTERFACES, multiSignSharesLibrary, 0
-        );
-        IContractDeployerInterface(contractDeployer).registerTemplate(
-            GROUP_REWARDS_TREASURY, uint8(RewardsTreasuryType.ShareBasedTreasury),
-            REQUIRED_REWARDS_TREASURY_INTERFACES, rewardsTreasuryLibrary, 0
         );
     }
 
@@ -158,10 +148,8 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
             )
         );
 
-        address treasuryAddress = _deployTreasury(msg.sender, companyAddr);
-
-        emit DecentralizedEntityDeployed(msg.sender, uint8(EntityType.SingleOwner), companyAddr, treasuryAddress);
-        return EntityDeployment(companyAddr, treasuryAddress);
+        emit DecentralizedEntityDeployed(msg.sender, uint8(EntityType.SingleOwner), companyAddr, address(0));
+        return EntityDeployment(companyAddr, address(0));
     }
 
     function deployMultiSignEntity(string calldata entityName, uint256 votingBlocksLength, string calldata metadataUrl) external returns (EntityDeployment memory) {
@@ -187,10 +175,9 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
             )
         );
 
-        address treasuryAddress = _deployTreasury(msg.sender, companyAddr);
-        emit DecentralizedEntityDeployed(msg.sender, uint8(EntityType.MultiSign), companyAddr, treasuryAddress);
+        emit DecentralizedEntityDeployed(msg.sender, uint8(EntityType.MultiSign), companyAddr, address(0));
 
-        return EntityDeployment(companyAddr, treasuryAddress);
+        return EntityDeployment(companyAddr, address(0));
     }
 
     function deployMultiSignSharesEntity(string calldata entityName, uint256 votingBlocksLength, string calldata metadataUrl) external returns (EntityDeployment memory) {
@@ -210,44 +197,8 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
                 sharesEntityNftOwnershipContract, ownerTokenID
             )
         );
-        address treasuryAddress = _deployTreasury(msg.sender, companyAddr);
 
-        emit DecentralizedEntityDeployed(msg.sender, uint8(EntityType.MultiSignShares), companyAddr, treasuryAddress);
-        return EntityDeployment(companyAddr, treasuryAddress);
-    }
-
-    function upgradeTreasury(address treasury) payable external {
-        if (!ERC165CheckerUpgradeable.supportsInterface(treasury, type(SecondaryServiceDeployableInterface).interfaceId)) {
-            revert ProvidedAddressNotCompatibleWithRequiredInterfaces(treasury, type(IContractDeployerInterface).interfaceId);
-        }
-        address masterDeployable = SecondaryServiceDeployableInterface(treasury).masterDeployable();
-
-        if (!ServiceDeployableInterface(masterDeployable).canAccessFromDeployer(msg.sender)) {
-            revert OperationNotPermittedForWalletError(msg.sender);
-        }
-
-        IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(
-            GROUP_REWARDS_TREASURY,
-            treasury
-        );
-    }
-
-    function _deployTreasury(address owner, address companyAddr) internal returns (address) {
-        address rewardsTreasury = IContractDeployerInterface(contractDeployer).deployTemplateWithProxy(
-            owner, GROUP_REWARDS_TREASURY, uint8(RewardsTreasuryType.ShareBasedTreasury),
-            bytes(""),
-            0x0
-        );
-        AddressUpgradeable.functionCall(
-            rewardsTreasury,
-            abi.encodeWithSignature(
-                "initialize(address)",
-                companyAddr
-            )
-        );
-
-        OwnableUpgradeable(rewardsTreasury).transferOwnership(companyAddr);
-
-        return rewardsTreasury;
+        emit DecentralizedEntityDeployed(msg.sender, uint8(EntityType.MultiSignShares), companyAddr, address(0));
+        return EntityDeployment(companyAddr, address(0));
     }
 }

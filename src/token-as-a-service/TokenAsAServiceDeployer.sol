@@ -23,7 +23,6 @@ import {TokenAsAServiceDeployerInterface} from "@unleashed/opendapps-cloud-inter
 import {TokenAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceInterface.sol";
 import {DynamicTokenomicsInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/DynamicTokenomicsInterface.sol";
 import {InflationInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/InflationInterface.sol";
-import {TokenLiquidityTreasuryInterface} from "@unleashed/opendapps-cloud-interfaces/treasury/TokenLiquidityTreasuryInterface.sol";
 import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 import {SecondaryServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/SecondaryServiceDeployableInterface.sol";
 
@@ -103,7 +102,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
     function initialize(
         address _contractDeployer, address _rewardsTreasury,
         address tokenLibrary, address tokenomicsLibrary, address inflationLibrary,
-        address treasuryLibrary, uint256 _tax, uint256 _deployTokenDefaultTax, address nftOwnershipContract
+        uint256 _tax, uint256 _deployTokenDefaultTax, address nftOwnershipContract
     ) public initializer {
         if (!ERC165CheckerUpgradeable.supportsInterface(_contractDeployer, type(IContractDeployerInterface).interfaceId)) {
             revert ProvidedAddressNotCompatibleWithRequiredInterfaces(_contractDeployer, type(IContractDeployerInterface).interfaceId);
@@ -118,7 +117,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         contractDeployer = _contractDeployer;
         rewardsTreasury = _rewardsTreasury;
 
-        _initializeTemplates(treasuryLibrary, tokenLibrary, tokenomicsLibrary, inflationLibrary, _tax);
+        _initializeTemplates(tokenLibrary, tokenomicsLibrary, inflationLibrary, _tax);
 
         ownershipNFTCollection = nftOwnershipContract;
 
@@ -267,7 +266,6 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         for (uint256 i = 0; i < (complexTax ? 3 : 1); i++) {
             DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
         }
-        _initializeTreasury(deployment, ownerAmount);
 
         emit TokenServiceDeployed(msg.sender, uint8(complexTax ? TokenLevel.HardcapAdvanced : TokenLevel.HardcapSimple), deployment.token, deployment.tokenomics, deployment.inflation, deployment.treasury);
         return deployment;
@@ -306,32 +304,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
             DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
         }
 
-        _initializeTreasury(deployment, ownerAmount);
-
         emit TokenServiceDeployed(msg.sender, uint8(TokenLevel.InflationAdvanced), deployment.token, deployment.tokenomics, deployment.inflation, deployment.treasury);
         return deployment;
-    }
-
-    function addLiqudityToDexNative(address router, address token, address treasury, uint256 tokenLiquidityAmount, uint256 ethLiquidityAmount) payable external {
-        _addLiquidityNative(router, token, treasury, tokenLiquidityAmount, ethLiquidityAmount);
-    }
-
-    function addLiqudityToDexNativeFromWallet(address router, address token, address treasury, uint256 tokenLiquidityAmount, uint256 ethLiquidityAmount) payable external {
-        uint256 senderBalance = IERC20Upgradeable(token).balanceOf(msg.sender);
-
-        if (senderBalance < tokenLiquidityAmount) {
-            revert SenderDoesNotHaveEnoughFunds(tokenLiquidityAmount, senderBalance);
-        }
-        if (IERC20Upgradeable(token).allowance(msg.sender, address(this)) < tokenLiquidityAmount) {
-            revert TokenAllowanceIsLessThenRequestedTransfer(
-                IERC20Upgradeable(token).allowance(msg.sender, address(this)),
-                tokenLiquidityAmount
-            );
-        }
-
-        SafeERC20Upgradeable.safeTransferFrom(IERC20Upgradeable(token), msg.sender, address(this), tokenLiquidityAmount);
-
-        _addLiquidityNative(router, token, treasury, tokenLiquidityAmount, ethLiquidityAmount);
     }
 
     function enableTokenomicsForDEX(address router, address token) external
@@ -356,37 +330,12 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         _enableTokenomicsForDEX(router, token, pair, _weth, address(0));
     }
 
-    function upgradeTreasury(address treasury) payable external __requireSecondaryServicePermission(treasury, address(0)) {
-        IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_TREASURY, treasury);
-    }
-
     function upgradeTokenomics(address tokenomics) payable external __requireSecondaryServicePermission(tokenomics, address(0)) {
         IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_TOKENOMICS, tokenomics);
     }
 
     function upgradeInflation(address inflation) payable external __requireSecondaryServicePermission(inflation, address(0)) {
         IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_TOKENOMICS, inflation);
-    }
-
-    //METHODS - PRIVATE
-    function _addLiquidityNative(address router, address token, address treasury, uint256 tokenLiquidutyAmount, uint256 ethLiquidityAmount)
-    __requireSecondaryServicePermission(treasury, OwnableUpgradeable(token).owner())
-    internal {
-        if (!whitelistedDexRouters.contains(router)) {
-            revert RouterNotPartOfWhitelist(router);
-        }
-
-        bool alreadyListed = TokenLiquidityTreasuryInterface(treasury).isTokenListedOnDex(router);
-        if (!alreadyListed && ethLiquidityAmount < minEthLiquidityAmount) {
-            revert ETHLessThanRequiredMinimumLiquidity(minEthLiquidityAmount, ethLiquidityAmount);
-        }
-
-        address _weth = weth(router);
-        address pair = LiquidityUtils.getOrCreatePair(token, _weth, router);
-        if (!alreadyListed) {
-            _enableTokenomicsForDEX(router, token, pair, _weth, treasury);
-        }
-        TokenLiquidityTreasuryInterface(treasury).addLiquidityV2{value: msg.value}(router, _weth, tokenLiquidutyAmount, ethLiquidityAmount);
     }
 
     function _enableTokenomicsForDEX(address router, address token, address pair, address _weth, address treasury) internal {
@@ -408,7 +357,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
     }
 
     function _initializeTemplates(
-        address treasuryLibrary, address tokenLibrary,
+        address tokenLibrary,
         address tokenomicsLibrary, address inflationLibrary,
         uint256 _tax
     ) internal {
@@ -422,11 +371,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         bytes4[] memory inflationInterfaces = new bytes4[](2);
         inflationInterfaces[0] = type(InflationInterface).interfaceId;
         inflationInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
-        bytes4[] memory treasuryInterfaces = new bytes4[](2);
-        treasuryInterfaces[0] = type(TokenLiquidityTreasuryInterface).interfaceId;
-        treasuryInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
 
-        IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TREASURY, 0, treasuryInterfaces, treasuryLibrary, 0);
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TOKEN, 0, tokenInterfaces, tokenLibrary, _tax);
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TOKENOMICS, 0, transferTokenomicsInterfaces, tokenomicsLibrary, 0);
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TOKENOMICS, 1, inflationInterfaces, inflationLibrary, 0);
@@ -439,27 +384,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
             level >= TokenLevel.InflationAdvanced
                 ? IContractDeployerInterface(contractDeployer).deployTemplateWithProxy(msg.sender, GROUP_TOKENOMICS, 1, bytes(''), refCode)
                 : address(0),
-            level > TokenLevel.Basic
-                ? IContractDeployerInterface(contractDeployer).deployTemplateWithProxy(msg.sender, GROUP_TREASURY, 0, bytes(''), refCode)
-                : address(0)
-        );
-    }
-
-    function _initializeTreasury(TokenDeployment memory deployment, uint256 ownerAmount) internal {
-        AddressUpgradeable.functionCall(
-            deployment.treasury,
-            abi.encodeWithSignature(
-                "initialize(address,uint256,uint256,uint256)",
-                deployment.token,
-                ownerAmount.div(ownerRewardCycles),
-                ownerRewardCycles,
-                ownerRewardsReleaseBlocks
-            )
-        );
-        SafeERC20Upgradeable.safeTransfer(
-            IERC20Upgradeable(deployment.token),
-            deployment.treasury,
-            IERC20Upgradeable(deployment.token).balanceOf(address(this))
+            address(0)
         );
     }
 
