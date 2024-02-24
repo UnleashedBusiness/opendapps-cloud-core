@@ -93,7 +93,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         return
             interfaceId == type(TreasuryInterface).interfaceId ||
             interfaceId == type(ServiceDeployableInterface).interfaceId ||
-            ERC165.supportsInterface(interfaceId);
+            ERC165Upgradeable.supportsInterface(interfaceId);
     }
 
     function getRewardTokens() external view returns (address[] memory) {
