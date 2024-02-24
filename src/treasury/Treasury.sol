@@ -7,7 +7,7 @@ import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet
 import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+import {ERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/introspection/ERC165Upgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
@@ -27,14 +27,14 @@ import {TreasuryPocketInterface} from "@unleashed/opendapps-cloud-interfaces/tre
     error EmptyTemplateError();
 
 contract Treasury is TreasuryInterface, ServiceDeployableInterface,
-Initializable, ERC165, ReentrancyGuardUpgradeable, OwnableUpgradeable {
+Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable {
     using SafeMath for uint256;
     using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
 
     uint256[50] private _gap;
 
-    mapping(address => uint256) private availableMap;
+    mapping(address => uint256) private availableMap; //unused
     mapping(address => uint256) private percents;
     mapping(address => mapping(address => uint256)) private released; //unused
     mapping(address => mapping(address => uint256)) private pending; //unused
@@ -42,10 +42,11 @@ Initializable, ERC165, ReentrancyGuardUpgradeable, OwnableUpgradeable {
     address public controller;
     EnumerableSet.AddressSet private payees;
     EnumerableSet.AddressSet private rewardTokensCache;
-    mapping(address => uint256) public lastTokenHolding;
+    mapping(address => uint256) public lastTokenHolding; //unused
 
     address private _pocketTemplate;
     mapping(address => address) public pockets;
+    address public deployer;
 
     constructor() {
         _disableInitializers();
@@ -67,7 +68,7 @@ Initializable, ERC165, ReentrancyGuardUpgradeable, OwnableUpgradeable {
         _;
     }
 
-    function initialize(address pocketTemplate, address _controller) external initializer {
+    function initialize(address deployer, address pocketTemplate, address _controller) external initializer {
         if (pocketTemplate == address(0)) {
             revert EmptyTemplateError();
         }
