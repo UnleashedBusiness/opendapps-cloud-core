@@ -89,7 +89,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         return walletOrContract == owner();
     }
 
-    function supportsInterface(bytes4 interfaceId) public virtual override(ERC165) view returns (bool) {
+    function supportsInterface(bytes4 interfaceId) public virtual override(ERC165Upgradeable) view returns (bool) {
         return
             interfaceId == type(TreasuryInterface).interfaceId ||
             interfaceId == type(ServiceDeployableInterface).interfaceId ||
