@@ -16,6 +16,7 @@ import {TreasuryInterface} from "@unleashed/opendapps-cloud-interfaces/treasury/
 import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 import {TreasuryPocketInterface} from "@unleashed/opendapps-cloud-interfaces/treasury/TreasuryPocketInterface.sol";
 
+    error InvalidInitializedState();
     error InvalidSharesValueError();
     error AccountIsZeroAddressError();
     error OperationsOnControllerNotPermitted();
@@ -68,7 +69,11 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         _;
     }
 
-    function initialize(address deployer, address pocketTemplate, address _controller) external initializer {
+    function initialize(address _deployer, address pocketTemplate, address _controller) external reinitializer(2) {
+        if (_getInitializedVersion() > 0) {
+            revert InvalidInitializedState();
+        }
+
         if (pocketTemplate == address(0)) {
             revert EmptyTemplateError();
         }
@@ -83,6 +88,20 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         payees.add(_controller);
 
         rewardTokensCache.add(address(0));
+        deployer = _deployer;
+    }
+
+    function initializePockets(address _deployer, address pocketTemplate) external reinitializer(2) {
+        if (_getInitializedVersion() != 1) {
+            revert InvalidInitializedState();
+        }
+
+        if (pocketTemplate == address(0)) {
+            revert EmptyTemplateError();
+        }
+
+        _pocketTemplate = pocketTemplate;
+        deployer = _deployer;
     }
 
     function canAccessFromDeployer(address walletOrContract) external view returns (bool) {
@@ -281,7 +300,8 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         Address.functionCall(
             address(c),
             abi.encodeWithSignature(
-                "initialize(address)",
+                "initialize(address,address)",
+                deployer,
                 wallet
             )
         );
