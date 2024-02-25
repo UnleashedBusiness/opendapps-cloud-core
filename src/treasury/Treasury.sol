@@ -70,8 +70,9 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
     }
 
     function initialize(address _deployer, address pocketTemplate, address _controller) external reinitializer(2) {
-        if (_getInitializedVersion() > 0) {
-            revert InvalidInitializedState();
+        uint256 currentState = _getInitializedVersion();
+        if (currentState > 0) {
+            revert InvalidInitializedState(currentState);
         }
 
         if (pocketTemplate == address(0)) {
