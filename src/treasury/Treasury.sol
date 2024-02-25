@@ -92,10 +92,9 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         deployer = _deployer;
     }
 
-    function initializePockets(address _deployer, address pocketTemplate) external reinitializer(2) {
-        uint256 currentState = _getInitializedVersion();
-        if (currentState != 1) {
-            revert InvalidInitializedState(currentState);
+    function initializePockets(address _deployer, address pocketTemplate) external {
+        if (_pocketTemplate != address(0) || deployer != address(0)) {
+            revert InvalidInitializedState(0);
         }
 
         if (pocketTemplate == address(0)) {
@@ -169,6 +168,10 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         }
 
         controller = _controller;
+    }
+
+    function changePocketTemplate(address _template) external onlyOwner {
+        _pocketTemplate = _template;
     }
 
     function addRewardToken(address token) external onlyOwner {
