@@ -19,7 +19,6 @@ import {StakingAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/
 import {StakingAsAServiceDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/staking-as-a-service/StakingAsAServiceDeployerInterface.sol";
 import {TokenAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceInterface.sol";
 import {IPersonalVault} from "@unleashed/opendapps-cloud-interfaces/staking-as-a-service/PersonalVaultInterface.sol";
-import "openzeppelin-contracts/contracts/access/AccessControlEnumerable.sol";
 
     error TokenAlreadyHasStaking();
     error TokenHasNoStakingDeployed();
