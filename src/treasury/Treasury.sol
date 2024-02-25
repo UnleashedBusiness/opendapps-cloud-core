@@ -16,7 +16,7 @@ import {TreasuryInterface} from "@unleashed/opendapps-cloud-interfaces/treasury/
 import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 import {TreasuryPocketInterface} from "@unleashed/opendapps-cloud-interfaces/treasury/TreasuryPocketInterface.sol";
 
-    error InvalidInitializedState();
+    error InvalidInitializedState(uint256 state);
     error InvalidSharesValueError();
     error AccountIsZeroAddressError();
     error OperationsOnControllerNotPermitted();
@@ -92,8 +92,9 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
     }
 
     function initializePockets(address _deployer, address pocketTemplate) external reinitializer(2) {
-        if (_getInitializedVersion() != 1) {
-            revert InvalidInitializedState();
+        uint256 currentState = _getInitializedVersion();
+        if (currentState != 1) {
+            revert InvalidInitializedState(currentState);
         }
 
         if (pocketTemplate == address(0)) {
