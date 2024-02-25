@@ -140,9 +140,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
 
     function totalPendingPayment(address account, address token) external view returns (uint256) {
         return percents[account] > 0
-            ? available(token)
-            .mul(percents[account])
-            .div(100_0)
+            ? _pendingBalance(account, token)
             : 0;
     }
 
@@ -256,13 +254,14 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         uint256[] memory amounts = new uint256[](payees.length());
         address[] memory wallets = new address[](payees.length());
         for (uint256 j = 0; j < payees.length(); j++) {
-            wallets[j] = payees.at(j);
+            address payee = payees.at(j);
 
-            if (pockets[wallets[j]] == address(0)) {
-                _deployPocket(wallets[j]);
+            if (pockets[payee] == address(0)) {
+                _deployPocket(payee);
             }
 
-            amounts[j] = _walletBalance(wallets[j], token);
+            wallets[j] = pockets[payee];
+            amounts[j] = _walletBalance(payee, token);
         }
 
         _payoutTokenToWallets(token, wallets, amounts);
@@ -287,10 +286,13 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         if (percents[account] == 0 || availableForToken == 0)
             return pocketBalance;
 
-        return availableForToken
+        return _pendingBalance(account, token).add(pocketBalance);
+    }
+
+    function _pendingBalance(address account, address token) internal view returns (uint256) {
+        return available(token)
         .mul(percents[account])
-        .div(100_0)
-        .add(pocketBalance);
+        .div(100_0);
     }
 
     function _pocketBalance(address wallet, address token) internal view returns (uint256) {
