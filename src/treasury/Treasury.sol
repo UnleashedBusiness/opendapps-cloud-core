@@ -151,7 +151,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
     }
 
     function balanceOf(address account, address token) external view returns (uint256) {
-        return _walletBalance(account, token);
+        return _pocketBalance(account, token);
     }
 
     function changeController(address _controller) external onlyOwner {
@@ -288,16 +288,6 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
                 SafeERC20.safeTransfer(IERC20(token), wallets[i], amounts[i]);
             }
         }
-    }
-
-    function _walletBalance(address account, address token) internal view returns (uint256) {
-        uint256 pocketBalance = _pocketBalance(account, token);
-        uint256 availableForToken = available(token);
-
-        if (percents[account] == 0 || availableForToken == 0)
-            return pocketBalance;
-
-        return _pendingBalance(account, token).add(pocketBalance);
     }
 
     function _pendingBalance(address account, address token) internal view returns (uint256) {
