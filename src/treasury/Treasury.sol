@@ -160,14 +160,9 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         percents[_controller] = percents[controller];
         percents[controller] = 0;
 
-        for (uint256 k = 0; k < rewardTokensCache.length(); k++) {
-            address token = rewardTokensCache.at(k);
-
-            pending[_controller][token] = pending[controller][token];
-            pending[controller][token] = 0;
-        }
-
+        payees.remove(controller);
         controller = _controller;
+        payees.add(_controller);
     }
 
     function changePocketTemplate(address _template) external onlyOwner {
@@ -253,10 +248,19 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
     }
 
     function _payoutToken(address token) internal {
+        if (!payees.contains(controller)) {
+            payees.add(controller); // FIX prev bug resulted in changeController
+        }
+
         uint256[] memory amounts = new uint256[](payees.length());
         address[] memory wallets = new address[](payees.length());
         for (uint256 j = 0; j < payees.length(); j++) {
             address payee = payees.at(j);
+
+            if (percents[payee] <= 0) {
+                payees.remove(payee); // FIX prev bug resulted in changeController
+                continue;
+            }
 
             if (pockets[payee] == address(0)) {
                 _deployPocket(payee);
