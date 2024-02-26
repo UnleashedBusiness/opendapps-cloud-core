@@ -261,7 +261,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
             }
 
             wallets[j] = pockets[payee];
-            amounts[j] = _walletBalance(payee, token);
+            amounts[j] = _pendingBalance(payee, token);
         }
 
         _payoutTokenToWallets(token, wallets, amounts);
@@ -281,7 +281,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
 
     function _walletBalance(address account, address token) internal view returns (uint256) {
         uint256 pocketBalance = _pocketBalance(account, token);
-        uint256 availableForToken = this.available(token);
+        uint256 availableForToken = available(token);
 
         if (percents[account] == 0 || availableForToken == 0)
             return pocketBalance;
