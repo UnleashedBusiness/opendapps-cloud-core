@@ -29,6 +29,8 @@ import {TreasuryPocketInterface} from "@unleashed/opendapps-cloud-interfaces/tre
 
 contract Treasury is TreasuryInterface, ServiceDeployableInterface,
 Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable {
+    event TokenPayout(address indexed token, address[] pockets, uint256[] amounts);
+
     using SafeMath for uint256;
     using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
@@ -265,15 +267,20 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         }
 
         _payoutTokenToWallets(token, wallets, amounts);
+        emit TokenPayout(token, wallets, amounts);
     }
 
     function _payoutTokenToWallets(address token, address[] memory wallets, uint256[] memory amounts) internal {
         if (token == address(0)) {
             for (uint256 i = 0; i < wallets.length; i++) {
+                if (amounts[i] <= 0) continue;
+
                 Address.sendValue(payable(wallets[i]), amounts[i]);
             }
         } else {
             for (uint256 i = 0; i < wallets.length; i++) {
+                if (amounts[i] <= 0) continue;
+
                 SafeERC20.safeTransfer(IERC20(token), wallets[i], amounts[i]);
             }
         }
