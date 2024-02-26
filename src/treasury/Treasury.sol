@@ -151,7 +151,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
     }
 
     function balanceOf(address account, address token) external view returns (uint256) {
-        return _pocketBalance(account, token);
+        return _walletBalance(account, token);
     }
 
     function changeController(address _controller) external onlyOwner {
@@ -296,9 +296,9 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         .div(100_0);
     }
 
-    function _pocketBalance(address wallet, address token) internal view returns (uint256) {
+    function _walletBalance(address wallet, address token) internal view returns (uint256) {
         return pockets[wallet] == address(0)
-            ? 0
+            ? _pendingBalance(wallet, token)
             : TreasuryPocketInterface(pockets[wallet]).available(token);
     }
 
