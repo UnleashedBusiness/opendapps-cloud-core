@@ -130,7 +130,7 @@ contract TreasuryDeployer is TreasuryDeployerInterface, Initializable, ERC165, A
         Address.functionCall(
             treasury,
             abi.encodeWithSignature(
-                "initialize(address,address)",
+                "initialize(address,address,address)",
                 address(this),
                 IContractDeployerInterface(contractDeployer).currentTemplate(GROUP_POCKET, 0),
                 msg.sender
