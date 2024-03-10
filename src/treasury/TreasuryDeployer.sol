@@ -119,12 +119,12 @@ contract TreasuryDeployer is TreasuryDeployerInterface, Initializable, ERC165, A
     }
 
     // METHODS - PUBLIC
-    function deploy(/*bytes32 refCode*/) payable external returns (address) {
+    function deploy(bytes32 refCode) payable external returns (address) {
         address treasury = IContractDeployerInterface(contractDeployer)
             .deployTemplateWithProxy{value: msg.value}(
                 msg.sender, GROUP_TREASURY, 0,
                 bytes(""),
-                bytes32("")//,refCode
+                refCode
             );
 
         Address.functionCall(
