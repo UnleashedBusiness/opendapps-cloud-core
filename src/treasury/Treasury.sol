@@ -234,6 +234,12 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         _payoutToken(token);
     }
 
+    function withdraw(address token, uint256 amount) external {
+        _payoutToken(token);
+
+        TreasuryPocketInterface(pockets[msg.sender]).withdraw(token, amount);
+    }
+
     function _payout() internal {
         for (uint256 k = 0; k < rewardTokensCache.length(); k++) {
             address token = rewardTokensCache.at(k);
