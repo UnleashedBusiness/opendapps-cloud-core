@@ -106,11 +106,16 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
 
         address model = IContractDeployerInterface(contractDeployer).deployTemplate(
             msg.sender, GROUP_ASSET_BACKING_SWAP_MODEL, 0,
+            bytes(""),
+            refCode
+        );
+
+        AddressUpgradeable.functionCall(
+            model,
             abi.encodeWithSignature(
                 "initialize(uint256)",
                 DEFAULT_SIMPLE_MODEL_MULTIPLIER
-            ),
-            refCode
+            )
         );
 
         address backing = IContractDeployerInterface(contractDeployer).deployTemplate{value: msg.value}(
@@ -118,14 +123,17 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
             bytes(""),
             refCode
         );
+
         AddressUpgradeable.functionCall(
             backing,
             abi.encodeWithSignature(
-                "initialize(address,address,address,address,uint256,uint256)",
-                msg.sender, backingToken, erc20Token,
-                model, defaultThreshold, defaultBlocksDistance
+                "initialize(address,address,address,uint256,uint256,bool)",
+                backingToken, erc20Token,
+                model, defaultThreshold, defaultBlocksDistance, false
             )
         );
+        OwnableUpgradeable(backing).transferOwnership(msg.sender);
+
         emit BaselineInsuranceServiceDeployed(msg.sender, erc20Token, backing);
         return backing;
     }
