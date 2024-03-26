@@ -230,6 +230,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
                 supply, 100, address(0), 0
             )
         );
+        // TODO: ODAPPS-415: fetch referral address
+        // TODO: ODAPPS-415: Controller list support
         AddressUpgradeable.functionCall(
             deployment.tokenomics,
             abi.encodeWithSignature("initialize(address,address,uint256)",
@@ -261,6 +263,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
         TokenDeployment memory deployment = _deployToken(complexTax ? TokenLevel.HardcapAdvanced : TokenLevel.HardcapSimple, refCode);
 
+        // TODO: ODAPPS-415: fetch referral address
         _initializeTokenAndTokenomics(deployment, name, ticker, supply, 100, metadataUrl);
 
         for (uint256 i = 0; i < (complexTax ? 3 : 1); i++) {
@@ -288,10 +291,13 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
             revert InitialSupplyExceedsAllowedValues(50, 90, initialSupplyPercent);
         }
 
+        // TODO: ODAPPS-415,ODAPPS-417: fetch referral address
         TokenDeployment memory deployment = _deployToken(TokenLevel.InflationAdvanced, refCode);
         _initializeTokenAndTokenomics(deployment, name, ticker, maxSupply, initialSupplyPercent, metadataUrl);
 
         uint256 rewardsSupply = maxSupply.sub(maxSupply.mul(initialSupplyPercent).div(100));
+
+        // TODO: ODAPPS-417: Controller list support
         AddressUpgradeable.functionCall(
             deployment.inflation,
             abi.encodeWithSignature("initialize(address,address,uint256,uint256,uint256,uint256)",
@@ -388,6 +394,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         );
     }
 
+    // TODO: ODAPPS-415: Add input for the referral address if supplied
     function _initializeTokenAndTokenomics(
         TokenDeployment memory deployment,
         string calldata name, string calldata ticker,
@@ -403,6 +410,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
                 _mintOwnerToken(metadataUrl)
             )
         );
+
+        // TODO: ODAPPS-415: Update to lists for controller
         AddressUpgradeable.functionCall(
             deployment.tokenomics,
             abi.encodeWithSignature("initialize(address,address,uint256)",

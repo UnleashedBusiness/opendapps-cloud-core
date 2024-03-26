@@ -44,6 +44,7 @@ contract ReferralsEngine is IReferralsEngine, Initializable, ERC165Upgradeable, 
             || ERC165Upgradeable.supportsInterface(interfaceId);
     }
 
+    // TODO: ODAPPS-414: Add getter for address of refCode
     function getCompensationPercent(bytes32 refCode) public view returns (uint256 percent, address receiver) {
         receiver = receivers[refCode];
         percent = 0;

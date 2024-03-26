@@ -128,6 +128,7 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
             msg.sender, GROUP_PRESALE, uint8(PresaleType.Basic), bytes(''), refCode
         );
 
+        // TODO: ODAPPS-416: Update to lists for controller and add fetch of referral address
         Address.functionCall(
             deployment,
             abi.encodeWithSignature(
