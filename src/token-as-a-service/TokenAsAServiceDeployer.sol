@@ -18,6 +18,7 @@ import {IWETH} from "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 
+import {IReferralsEngine} from "@unleashed/opendapps-cloud-interfaces/deployer/IReferralsEngine.sol";
 import {IContractDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/IContractDeployerInterface.sol";
 import {TokenAsAServiceDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceDeployerInterface.sol";
 import {TokenAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceInterface.sol";
@@ -230,12 +231,13 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
                 supply, 100, address(0), 0
             )
         );
-        // TODO: ODAPPS-415: fetch referral address
-        // TODO: ODAPPS-415: Controller list support
+
+        (address[] memory controllerList, uint256[] memory controllerPercentList) = _buildControllerList(refCode);
+
         AddressUpgradeable.functionCall(
             deployment.tokenomics,
-            abi.encodeWithSignature("initialize(address,address,uint256)",
-                deployment.token, rewardsTreasury, deployTokenDefaultTax
+            abi.encodeWithSignature("initialize(address,address[],uint256[])",
+                deployment.token, controllerList, controllerPercentList
             )
         );
         DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
@@ -263,8 +265,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
         TokenDeployment memory deployment = _deployToken(complexTax ? TokenLevel.HardcapAdvanced : TokenLevel.HardcapSimple, refCode);
 
-        // TODO: ODAPPS-415: fetch referral address
-        _initializeTokenAndTokenomics(deployment, name, ticker, supply, 100, metadataUrl);
+        _initializeTokenAndTokenomics(deployment, name, ticker, supply, 100, metadataUrl, refCode);
 
         for (uint256 i = 0; i < (complexTax ? 3 : 1); i++) {
             DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
@@ -291,9 +292,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
             revert InitialSupplyExceedsAllowedValues(50, 90, initialSupplyPercent);
         }
 
-        // TODO: ODAPPS-415,ODAPPS-417: fetch referral address
         TokenDeployment memory deployment = _deployToken(TokenLevel.InflationAdvanced, refCode);
-        _initializeTokenAndTokenomics(deployment, name, ticker, maxSupply, initialSupplyPercent, metadataUrl);
+        _initializeTokenAndTokenomics(deployment, name, ticker, maxSupply, initialSupplyPercent, metadataUrl, refCode);
 
         uint256 rewardsSupply = maxSupply.sub(maxSupply.mul(initialSupplyPercent).div(100));
 
@@ -394,12 +394,11 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         );
     }
 
-    // TODO: ODAPPS-415: Add input for the referral address if supplied
     function _initializeTokenAndTokenomics(
         TokenDeployment memory deployment,
         string calldata name, string calldata ticker,
         uint256 maxSupply,
-        uint256 initialSupplyPercent, string calldata metadataUrl
+        uint256 initialSupplyPercent, string calldata metadataUrl, bytes32 refCode
     ) internal {
         AddressUpgradeable.functionCall(
             deployment.token,
@@ -411,14 +410,33 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
             )
         );
 
-        // TODO: ODAPPS-415: Update to lists for controller
+        (address[] memory controllerList, uint256[] memory controllerPercentList) = _buildControllerList(refCode);
+
         AddressUpgradeable.functionCall(
             deployment.tokenomics,
             abi.encodeWithSignature("initialize(address,address,uint256)",
-                deployment.token, rewardsTreasury, deployTokenDefaultTax
+                deployment.token, controllerList, controllerPercentList
             )
         );
     }
 
 
+    function _buildControllerList(bytes32 refCode) internal returns (address[] memory, uint256[] memory) {
+        address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
+
+        (uint256 percent, address referral) = IReferralsEngine(referralEngine).getCompensationPercent(refCode);
+
+        address[] memory controllerList = new address[](referral != address(0) ? 2 : 1);
+        uint256[] memory controllerPercentList = new uint256[](referral != address(0) ? 2 : 1);
+        controllerList[0] = rewardsTreasury;
+        if (referral != address(0)) {
+            controllerList[1] = referral;
+            controllerPercentList[1] = percent.mul(deployTokenDefaultTax).div(100);
+            controllerPercentList[0] = deployTokenDefaultTax.sub(controllerPercentList[1]);
+        } else {
+            controllerPercentList[0] = deployTokenDefaultTax;
+        }
+
+        return (controllerList, controllerPercentList);
+    }
 }
