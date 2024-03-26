@@ -54,6 +54,16 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
     event RefCodeUsed(bytes32 indexed code, address indexed receiver, uint256 ammount);
     event TokenServiceDeployed(address indexed creator, uint8 indexed typeId, address contractAddress, address tokenomicsAddress, address inflationAddress, address treasuryAddress);
 
+    struct TokenInitializationData {
+        TokenDeployment deployment;
+        string name;
+        string ticker;
+        uint256 maxSupply;
+        uint256 initialSupplyPercent;
+        string metadataUrl;
+        bytes32 refCode;
+    }
+
     bytes32 public constant LOCAL_MANAGER_ROLE = keccak256("LOCAL_MANAGER_ROLE");
 
     bytes32 public constant GROUP_TOKENOMICS = keccak256("Tokenomics");
@@ -213,22 +223,34 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
     }
 
     // METHODS - PUBLIC
-    function deployBasicToken(
-        string calldata name, string calldata ticker, uint256 supply, bytes32 refCode
+    function deployToken(
+        TokenDeploymentBaseInputs calldata tokenBaseInputs,
+        TokenDeploymentInflationInputs calldata tokenInflationInputs,
+        bytes32 refCode
     ) payable external returns (TokenDeployment memory)
     {
-        if (minTotalSupply > supply) {
-            revert TotalSupplyBelowAllowedValues(minTotalSupply, supply);
+        if (minTotalSupply > tokenBaseInputs.supply) {
+            revert TotalSupplyBelowAllowedValues(minTotalSupply, tokenBaseInputs.supply);
         }
 
-        TokenDeployment memory deployment = _deployToken(TokenLevel.Basic, refCode);
+        TokenDeployment memory deployment = _deployToken(
+            tokenInflationInputs.enabled ? TokenLevel.InflationAdvanced : TokenLevel.HardcapSimple,
+            refCode
+        );
 
+        uint256 ownershipId = _mintOwnerToken(tokenBaseInputs.metadataUrl);
         AddressUpgradeable.functionCall(
             deployment.token,
             abi.encodeWithSignature(
                 "initialize(string,string,address,address,uint256,uint256,address,uint256)",
-                name, ticker, deployment.tokenomics, deployment.inflation,
-                supply, 100, address(0), 0
+                tokenBaseInputs.name,
+                tokenBaseInputs.ticker,
+                deployment.tokenomics,
+                deployment.inflation,
+                tokenBaseInputs.supply,
+                tokenInflationInputs.enabled ? tokenInflationInputs.initialSupplyPercent : 100,
+                ownershipNFTCollection,
+                ownershipId
             )
         );
 
@@ -240,77 +262,24 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
                 deployment.token, controllerList, controllerPercentList
             )
         );
+
+        if (tokenInflationInputs.enabled) {
+            uint256 rewardsSupply = tokenBaseInputs.supply.sub(tokenBaseInputs.supply.mul(tokenInflationInputs.initialSupplyPercent).div(100));
+
+            // TODO: ODAPPS-417: Controller list support
+            AddressUpgradeable.functionCall(
+                deployment.inflation,
+                abi.encodeWithSignature("initialize(address,address,uint256,uint256,uint256,uint256)",
+                    deployment.token, rewardsTreasury, deployTokenDefaultInflationTax,
+                    rewardsSupply, tokenInflationInputs.rewardRounds, tokenInflationInputs.blockPerCycle
+                )
+            );
+        }
+
         DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
-
-        OwnableUpgradeable(deployment.token).transferOwnership(msg.sender);
-
         SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(deployment.token), msg.sender, IERC20Upgradeable(deployment.token).balanceOf(address(this)));
 
         emit TokenServiceDeployed(msg.sender, uint8(TokenLevel.Basic), deployment.token, deployment.tokenomics, deployment.inflation, deployment.treasury);
-        return deployment;
-    }
-
-    function deployHardCapToken(
-        string calldata name, string calldata ticker, uint256 supply, uint256 ownerAmount,
-        bool complexTax, string calldata metadataUrl, bytes32 refCode
-    ) payable external returns (TokenDeployment memory)
-    {
-        if (minTotalSupply > supply) {
-            revert TotalSupplyBelowAllowedValues(minTotalSupply, supply);
-        }
-
-        if (supply.mul(10).div(100) < ownerAmount) {
-            revert OwnerShareGreaterThanAllowed(supply.mul(10).div(100), ownerAmount);
-        }
-
-        TokenDeployment memory deployment = _deployToken(complexTax ? TokenLevel.HardcapAdvanced : TokenLevel.HardcapSimple, refCode);
-
-        _initializeTokenAndTokenomics(deployment, name, ticker, supply, 100, metadataUrl, refCode);
-
-        for (uint256 i = 0; i < (complexTax ? 3 : 1); i++) {
-            DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
-        }
-
-        emit TokenServiceDeployed(msg.sender, uint8(complexTax ? TokenLevel.HardcapAdvanced : TokenLevel.HardcapSimple), deployment.token, deployment.tokenomics, deployment.inflation, deployment.treasury);
-        return deployment;
-    }
-
-    function deployInflationaryToken(
-        string calldata name, string calldata ticker, uint256 maxSupply,
-        uint256 initialSupplyPercent, uint256 rewardRounds, uint256 blockPerCycle,
-        uint256 ownerAmount, string calldata metadataUrl, bytes32 refCode
-    ) payable external returns (TokenDeployment memory) {
-        if (minTotalSupply > maxSupply) {
-            revert TotalSupplyBelowAllowedValues(minTotalSupply, maxSupply);
-        }
-
-        if (maxSupply.mul(10).div(100) < ownerAmount) {
-            revert OwnerShareGreaterThanAllowed(maxSupply.mul(10).div(100), ownerAmount);
-        }
-
-        if (initialSupplyPercent < 50 && initialSupplyPercent > 90) {
-            revert InitialSupplyExceedsAllowedValues(50, 90, initialSupplyPercent);
-        }
-
-        TokenDeployment memory deployment = _deployToken(TokenLevel.InflationAdvanced, refCode);
-        _initializeTokenAndTokenomics(deployment, name, ticker, maxSupply, initialSupplyPercent, metadataUrl, refCode);
-
-        uint256 rewardsSupply = maxSupply.sub(maxSupply.mul(initialSupplyPercent).div(100));
-
-        // TODO: ODAPPS-417: Controller list support
-        AddressUpgradeable.functionCall(
-            deployment.inflation,
-            abi.encodeWithSignature("initialize(address,address,uint256,uint256,uint256,uint256)",
-                deployment.token, rewardsTreasury, deployTokenDefaultInflationTax,
-                rewardsSupply, rewardRounds, blockPerCycle
-            )
-        );
-
-        for (uint256 i = 0; i < 3; i++) {
-            DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
-        }
-
-        emit TokenServiceDeployed(msg.sender, uint8(TokenLevel.InflationAdvanced), deployment.token, deployment.tokenomics, deployment.inflation, deployment.treasury);
         return deployment;
     }
 
@@ -394,34 +363,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         );
     }
 
-    function _initializeTokenAndTokenomics(
-        TokenDeployment memory deployment,
-        string calldata name, string calldata ticker,
-        uint256 maxSupply,
-        uint256 initialSupplyPercent, string calldata metadataUrl, bytes32 refCode
-    ) internal {
-        AddressUpgradeable.functionCall(
-            deployment.token,
-            abi.encodeWithSignature("initialize(string,string,address,address,uint256,uint256,address,uint256)",
-                name, ticker, deployment.tokenomics, deployment.inflation,
-                maxSupply, initialSupplyPercent,
-                ownershipNFTCollection,
-                _mintOwnerToken(metadataUrl)
-            )
-        );
-
-        (address[] memory controllerList, uint256[] memory controllerPercentList) = _buildControllerList(refCode);
-
-        AddressUpgradeable.functionCall(
-            deployment.tokenomics,
-            abi.encodeWithSignature("initialize(address,address,uint256)",
-                deployment.token, controllerList, controllerPercentList
-            )
-        );
-    }
-
-
-    function _buildControllerList(bytes32 refCode) internal returns (address[] memory, uint256[] memory) {
+    function _buildControllerList(bytes32 refCode) internal view returns (address[] memory, uint256[] memory) {
         address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
 
         (uint256 percent, address referral) = IReferralsEngine(referralEngine).getCompensationPercent(refCode);
