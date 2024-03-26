@@ -7,7 +7,7 @@ auto_detect_solc = false
 fs_permissions = [
 {access = "read", path = "./out"},
 ]
-via-ir = true
+via-ir = false
 
 [profile.lite.optimizer_details.yulDetails]
 optimizerSteps = ''
