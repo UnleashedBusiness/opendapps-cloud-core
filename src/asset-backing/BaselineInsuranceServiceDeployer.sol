@@ -90,6 +90,13 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
         );
     }
 
+    function refreshBackingLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory backingInterfaces = new bytes4[](1);
+        backingInterfaces[0] = type(AssetBackingInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_ASSET_BACKING, 0, backingInterfaces);
+    }
+
     function setDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeDeployTax(
             GROUP_ASSET_BACKING,

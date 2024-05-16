@@ -77,6 +77,13 @@ contract VestingDeployer is VestingDeployerInterface, Initializable, ERC165, Acc
         );
     }
 
+    function refreshVestingLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory vestingInterfaces = new bytes4[](1);
+        vestingInterfaces[0] = type(VestingInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_VESTING, 0, vestingInterfaces);
+    }
+
     function setDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeDeployTax(
             GROUP_VESTING,

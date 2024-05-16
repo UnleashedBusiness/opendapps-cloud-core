@@ -165,12 +165,37 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKEN, 0, _token);
     }
 
+    function refreshTokenLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory tokenInterfaces = new bytes4[](3);
+        tokenInterfaces[0] = type(IERC20Upgradeable).interfaceId;
+        tokenInterfaces[1] = type(TokenAsAServiceInterface).interfaceId;
+        tokenInterfaces[2] = type(ServiceDeployableInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_TOKEN, 0, tokenInterfaces);
+    }
+
     function setDynamicTokenomicsLibrary(address _tokenomics) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKENOMICS, 0, _tokenomics);
     }
 
+    function refreshDynamicTokenomicsLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory transferTokenomicsInterfaces = new bytes4[](2);
+        transferTokenomicsInterfaces[0] = type(DynamicTokenomicsInterface).interfaceId;
+        transferTokenomicsInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_TOKENOMICS, 0, transferTokenomicsInterfaces);
+    }
+
     function setInflationLibrary(address _inflation) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKENOMICS, 1, _inflation);
+    }
+
+    function refreshInflationTokenomicsLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory inflationInterfaces = new bytes4[](2);
+        inflationInterfaces[0] = type(InflationInterface).interfaceId;
+        inflationInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_TOKENOMICS, 1, inflationInterfaces);
     }
 
     function setTreasuryLibrary(address _treasury) external onlyRole(LOCAL_MANAGER_ROLE) {

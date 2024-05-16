@@ -105,6 +105,14 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
         IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_PRESALE, uint8(PresaleType.Basic), _library);
     }
 
+    function refreshPresaleLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory presaleInterfaces = new bytes4[](2);
+        presaleInterfaces[0] = type(PresaleServiceInterface).interfaceId;
+        presaleInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_PRESALE, uint8(PresaleType.Basic), presaleInterfaces);
+    }
+
     function setPresaleDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeDeployTax(GROUP_PRESALE, uint8(PresaleType.Basic), taxSize);
     }
