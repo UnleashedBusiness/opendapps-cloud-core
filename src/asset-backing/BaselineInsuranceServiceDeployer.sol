@@ -201,14 +201,14 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
         return backing;
     }
 
-    function deployMultiSimpleModel(address erc20Token, address[] calldata backingToken, bytes32 refCode) payable external returns (address) {
+    function deployMultiSimpleModel(address erc20Token, address[] memory backingTokens, bytes32 refCode) payable external returns (address) {
         // Thanks DSUD
         //if (!ERC165CheckerUpgradeable.supportsInterface(erc20Token, type(IERC20Upgradeable).interfaceId)) {
         //    revert ProvidedAddressNotCompatibleWithRequiredInterfaces();
         //}
 
         address model = IContractDeployerInterface(contractDeployer).deployTemplate(
-            msg.sender, GROUP_ASSET_BACKING_SWAP_MODEL, 0,
+            msg.sender, GROUP_ASSET_BACKING_SWAP_MODEL, 2,
             bytes(""),
             refCode
         );
@@ -222,7 +222,7 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
         );
 
         address backing = IContractDeployerInterface(contractDeployer).deployTemplate{value: msg.value}(
-            msg.sender, GROUP_ASSET_BACKING, 0,
+            msg.sender, GROUP_ASSET_BACKING, 1,
             bytes(""),
             refCode
         );
@@ -230,9 +230,9 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
         AddressUpgradeable.functionCall(
             backing,
             abi.encodeWithSignature(
-                "initialize(address,address,address,uint256,uint256,bool)",
-                backingToken, erc20Token,
-                model, defaultThreshold, defaultBlocksDistance, false
+                "initialize(address[],address,address,uint256,bool)",
+                backingTokens, erc20Token,
+                model, defaultBlocksDistance, false
             )
         );
         OwnableUpgradeable(backing).transferOwnership(msg.sender);
