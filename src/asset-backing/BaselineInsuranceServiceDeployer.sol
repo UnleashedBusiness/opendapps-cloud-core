@@ -15,8 +15,8 @@ import {IContractDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/
 import {AssetBackingInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/AssetBackingInterface.sol";
 import {BaselineInsuranceDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/BaselineInsuranceDeployerInterface.sol";
 import {SmartSwapPriceModelInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/SmartSwapPriceModelInterface.sol";
-import {MultiAssetBackingInterface} from "../../../solidity-interfaces/src/asset-backing/MultiAssetBackingInterface.sol";
-import {SmartSwapMultiPriceModelInterface} from "../../../solidity-interfaces/src/asset-backing/SmartSwapMultiPriceModelInterface.sol";
+import {MultiAssetBackingInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/MultiAssetBackingInterface.sol";
+import {SmartSwapMultiPriceModelInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/SmartSwapMultiPriceModelInterface.sol";
 
     error ProvidedAddressNotCompatibleWithRequiredInterfaces();
     error TokenAlreadyHasBacking();
