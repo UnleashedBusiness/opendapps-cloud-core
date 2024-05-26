@@ -35,6 +35,8 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
     uint256 public defaultThreshold = 0.001 ether;
     uint256 public defaultBlocksDistance = 10;
 
+    address public swapRouter;
+
     using SafeMathUpgradeable for uint256;
     using AddressUpgradeable for address;
 
@@ -99,6 +101,10 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
     }
 
     // METHODS - MANAGER
+    function setSwapRouter(address _router) external onlyRole(LOCAL_MANAGER_ROLE) {
+        swapRouter = _router;
+    }
+
     function setBackingLibraryAddress(address _libraryAddress) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeTemplate(
             GROUP_ASSET_BACKING,
@@ -230,9 +236,9 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
         AddressUpgradeable.functionCall(
             backing,
             abi.encodeWithSignature(
-                "initialize(address[],address,address,uint256,bool)",
-                backingTokens, erc20Token,
-                model, defaultBlocksDistance, false
+                "initialize(address[],uint256[],address,address,uint256,address,bool)",
+                backingTokens, [0], erc20Token,
+                model, defaultBlocksDistance, swapRouter, false
             )
         );
         OwnableUpgradeable(backing).transferOwnership(msg.sender);
