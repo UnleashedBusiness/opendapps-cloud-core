@@ -233,11 +233,14 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
             refCode
         );
 
+        uint256[] memory minThreshold = new uint256[](1);
+        minThreshold[0] = 0;
+
         AddressUpgradeable.functionCall(
             backing,
             abi.encodeWithSignature(
                 "initialize(address[],uint256[],address,address,uint256,address,bool)",
-                backingTokens, [0], erc20Token,
+                backingTokens, minThreshold, erc20Token,
                 model, defaultBlocksDistance, swapRouter, false
             )
         );
