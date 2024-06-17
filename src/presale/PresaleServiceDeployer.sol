@@ -9,7 +9,6 @@ import {SafeMath} from "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC165Checker} from "@openzeppelin/contracts/utils/introspection/ERC165Checker.sol";
 import {ERC165} from "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 
@@ -18,6 +17,7 @@ import {PresaleServiceDeployerInterface} from "@unleashed/opendapps-cloud-interf
 import {PresaleServiceInterface} from "@unleashed/opendapps-cloud-interfaces/presale/PresaleServiceInterface.sol";
 import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 import {SecondaryServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/SecondaryServiceDeployableInterface.sol";
+import {IReferralsEngine} from "@unleashed/opendapps-cloud-interfaces/deployer/IReferralsEngine.sol";
 
     error ProvidedAddressNotCompatibleWithRequiredInterfaces(address target, bytes4 interfaceId);
     error RouterNotPartOfWhitelist(address router);
@@ -51,9 +51,11 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
 
     uint256 public minBlocksForStart;
     uint256 public minBlocksDuration;
-    uint256 public presaleControllerDefaultTax;
+    uint256 public presaleControllerDefaultTax; // OLD service tax. DO NOT REMOVE!
 
-    using SafeMath for uint256;
+    uint256 public constant PERCENT_SCALING = 1000; //3 decimals
+    uint256 public serviceTax;
+
     using Address for address;
 
     receive() external payable {}
@@ -70,7 +72,7 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
 
     function initialize(
         address _contractDeployer, address _rewardsTreasury, address presaleLibrary,
-        uint256 _tax, uint256 _minBlocksForStart, uint256 _minBlocksDuration, uint256 _presaleControllerDefaultTax
+        uint256 _tax, uint256 _minBlocksForStart, uint256 _minBlocksDuration, uint256 _serviceTax
     ) public initializer {
         if (!ERC165Checker.supportsInterface(_contractDeployer, type(IContractDeployerInterface).interfaceId)) {
             revert ProvidedAddressNotCompatibleWithRequiredInterfaces(_contractDeployer, type(IContractDeployerInterface).interfaceId);
@@ -85,7 +87,7 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
         rewardsTreasury = _rewardsTreasury;
         minBlocksForStart = _minBlocksForStart;
         minBlocksDuration = _minBlocksDuration;
-        presaleControllerDefaultTax = _presaleControllerDefaultTax;
+        serviceTax = _serviceTax;
 
         bytes4[] memory presaleInterfaces = new bytes4[](2);
         presaleInterfaces[0] = type(PresaleServiceInterface).interfaceId;
@@ -136,12 +138,13 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
             msg.sender, GROUP_PRESALE, uint8(PresaleType.Basic), bytes(''), refCode
         );
 
-        // TODO: ODAPPS-416: Update to lists for controller and add fetch of referral address
+        (address[] memory receiverList, uint256[] memory receiverPercentList) = _buildServiceTaxationReceivers(refCode);
         Address.functionCall(
             deployment,
             abi.encodeWithSignature(
-                "initialize(address,address,uint256,uint256,address,uint256)",
-                token, exchangeToken, minBlocksForStart, minBlocksDuration, rewardsTreasury, presaleControllerDefaultTax
+                "initialize(address,address,uint256,uint256,address[],uint256[],uint256)",
+                token, exchangeToken, minBlocksForStart, minBlocksDuration,
+                receiverList, receiverPercentList, PERCENT_SCALING
             )
         );
         if (!ERC165Checker.supportsInterface(token, type(ServiceDeployableInterface).interfaceId)) {
@@ -157,5 +160,26 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
             GROUP_PRESALE,
             presale
         );
+    }
+
+    function _buildServiceTaxationReceivers(bytes32 refCode) internal view returns (address[] memory, uint256[] memory) {
+        address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
+
+        (uint256 percent, address referral) = IReferralsEngine(referralEngine).getCompensationPercent(refCode);
+
+        address[] memory receiverList = new address[](referral != address(0) ? 2 : 1);
+        uint256[] memory receiverPercentList = new uint256[](referral != address(0) ? 2 : 1);
+        uint256 serviceLocal = serviceTax > 0 ? serviceTax : presaleControllerDefaultTax;
+
+        receiverList[0] = rewardsTreasury;
+        if (referral != address(0)) {
+            receiverList[1] = referral;
+            receiverPercentList[1] = serviceLocal * percent / 100;
+            receiverPercentList[0] = serviceLocal - receiverPercentList[1];
+        } else {
+            receiverPercentList[0] = serviceLocal;
+        }
+
+        return (receiverList, receiverPercentList);
     }
 }
