@@ -169,7 +169,7 @@ contract PresaleServiceDeployer is PresaleServiceDeployerInterface, Initializabl
 
         address[] memory receiverList = new address[](referral != address(0) ? 2 : 1);
         uint256[] memory receiverPercentList = new uint256[](referral != address(0) ? 2 : 1);
-        uint256 serviceLocal = serviceTax > 0 ? serviceTax : presaleControllerDefaultTax;
+        uint256 serviceLocal = serviceTax > 0 ? serviceTax : (presaleControllerDefaultTax * PERCENT_SCALING / 10);
 
         receiverList[0] = rewardsTreasury;
         if (referral != address(0)) {

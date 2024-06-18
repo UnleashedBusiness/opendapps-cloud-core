@@ -87,6 +87,10 @@ contract DistributorDeployer is DistributorDeployerInterface_v1, Initializable, 
         );
     }
 
+    function setServiceTaxReceiverAddress(address _address) external onlyOwner {
+        serviceTaxReceiver = _address;
+    }
+
     // METHODS - PUBLIC
     function deploy(bytes32 refCode) payable external returns (address) {
         address distributor = IContractDeployerInterface(contractDeployer)
