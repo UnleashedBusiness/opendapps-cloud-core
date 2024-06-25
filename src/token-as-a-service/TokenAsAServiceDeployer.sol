@@ -26,6 +26,7 @@ import {DynamicTokenomicsInterface} from "@unleashed/opendapps-cloud-interfaces/
 import {InflationInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/InflationInterface.sol";
 import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 import {SecondaryServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/SecondaryServiceDeployableInterface.sol";
+import {LiquidityMiningProxyInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/LiquidityMiningProxyInterface.sol";
 
 import {OwnershipNFTCollection} from "./../ownership/OwnershipNFTCollection.sol";
 import {LiquidityUtils} from "./../lib/LiquidityUtils.sol";
@@ -53,6 +54,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
     event RefCodeUsed(bytes32 indexed code, address indexed receiver, uint256 ammount);
     event TokenServiceDeployed(address indexed creator, uint8 indexed typeId, address contractAddress, address tokenomicsAddress, address inflationAddress, address treasuryAddress);
+    event LiquidityMiningServiceDeployed(address indexed creator, address indexed tokenAddress, address contractAddress);
 
     struct TokenInitializationData {
         TokenDeployment deployment;
@@ -68,7 +70,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
     bytes32 public constant GROUP_TOKENOMICS = keccak256("Tokenomics");
     bytes32 public constant GROUP_TOKEN = keccak256("Token");
-    bytes32 public constant GROUP_TREASURY = keccak256("TREASURY");
+    bytes32 public constant GROUP_TREASURY = keccak256("TREASURY"); //OLD DO NOT REMOVE
 
     uint256 public constant DEFAULT_MIN_TOTAL_SUPPLY = 1 ether;
     uint256 public constant DEFAULT_MIN_ETH_LIQUIDITY_AMOUNT = 1 ether;
@@ -92,6 +94,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
     uint256 public minTotalSupply;
 
+    bytes32 public constant GROUP_LIQUIDITY_MINING = keccak256("LIQUIDITY_MINING"); //DO NOT MOVE! Breaks memory!
+
     using SafeMathUpgradeable for uint256;
     using AddressUpgradeable for address;
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
@@ -112,8 +116,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
     function initialize(
         address _contractDeployer, address _rewardsTreasury,
-        address tokenLibrary, address tokenomicsLibrary, address inflationLibrary,
-        uint256 _tax, uint256 _deployTokenDefaultTax, address nftOwnershipContract
+        address tokenLibrary, address tokenomicsLibrary, address inflationLibrary, address lmLibrary,
+        uint256 _tax, uint256 _lmTax, uint256 _deployTokenDefaultTax, address nftOwnershipContract
     ) public initializer {
         if (!ERC165CheckerUpgradeable.supportsInterface(_contractDeployer, type(IContractDeployerInterface).interfaceId)) {
             revert ProvidedAddressNotCompatibleWithRequiredInterfaces(_contractDeployer, type(IContractDeployerInterface).interfaceId);
@@ -128,7 +132,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         contractDeployer = _contractDeployer;
         rewardsTreasury = _rewardsTreasury;
 
-        _initializeTemplates(tokenLibrary, tokenomicsLibrary, inflationLibrary, _tax);
+        _initializeTemplates(tokenLibrary, tokenomicsLibrary, inflationLibrary, lmLibrary, _tax, _lmTax);
 
         ownershipNFTCollection = nftOwnershipContract;
 
@@ -198,8 +202,25 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_TOKENOMICS, 1, inflationInterfaces);
     }
 
-    function setTreasuryLibrary(address _treasury) external onlyRole(LOCAL_MANAGER_ROLE) {
-        IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TREASURY, 0, _treasury);
+    function setLiquidityMiningLibrary(address _library) external onlyRole(LOCAL_MANAGER_ROLE) {
+        IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_LIQUIDITY_MINING, 0, _library);
+    }
+
+    function refreshLiquidityMiningLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory lmInterfaces = new bytes4[](1);
+        lmInterfaces[0] = type(LiquidityMiningProxyInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_LIQUIDITY_MINING, 0, lmInterfaces);
+    }
+
+    function registerLiquidityMiningLibraryAddress(address _libraryAddress, uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory lmInterfaces = new bytes4[](1);
+        lmInterfaces[0] = type(LiquidityMiningProxyInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).registerTemplate(
+            GROUP_LIQUIDITY_MINING, 0,
+            lmInterfaces, _libraryAddress, taxSize
+        );
     }
 
     function setTokenDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
@@ -308,6 +329,35 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         return deployment;
     }
 
+    function deployLiquidityMiningProxy(address tokenAddress, bytes32 refCode) payable external returns (address) {
+        address lmAddress = IContractDeployerInterface(contractDeployer)
+            .deployTemplateWithProxy{value: msg.value}(msg.sender, GROUP_LIQUIDITY_MINING, 0, bytes(""), refCode);
+
+        (address[] memory controllerList, uint256[] memory controllerPercentList) = _buildControllerList(refCode);
+
+        AddressUpgradeable.functionCall(
+            lmAddress,
+            abi.encodeWithSignature(
+                "initialize(address,uint256,address[],uint256[])",
+                tokenAddress,
+                10,
+                controllerList,
+                controllerPercentList
+            )
+        );
+
+        if (ERC165CheckerUpgradeable.supportsInterface(tokenAddress, type(TokenAsAServiceInterface).interfaceId)) {
+            address tokenomics = TokenAsAServiceInterface(tokenAddress).tokenomics();
+            DynamicTokenomicsInterface(tokenomics).addToTaxablePathWhitelist(lmAddress);
+        }
+
+        OwnableUpgradeable(lmAddress).transferOwnership(msg.sender);
+
+        emit LiquidityMiningServiceDeployed(msg.sender, tokenAddress, lmAddress);
+
+        return lmAddress;
+    }
+
     function enableTokenomicsForDEX(address router, address token) external
     {
         if (msg.sender != OwnableUpgradeable(token).owner()) {
@@ -358,23 +408,32 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
     function _initializeTemplates(
         address tokenLibrary,
-        address tokenomicsLibrary, address inflationLibrary,
-        uint256 _tax
+        address tokenomicsLibrary,
+        address inflationLibrary,
+        address lmLibrary,
+        uint256 _tax,
+        uint256 _lmTax
     ) internal {
         bytes4[] memory tokenInterfaces = new bytes4[](3);
         tokenInterfaces[0] = type(IERC20Upgradeable).interfaceId;
         tokenInterfaces[1] = type(TokenAsAServiceInterface).interfaceId;
         tokenInterfaces[2] = type(ServiceDeployableInterface).interfaceId;
+
         bytes4[] memory transferTokenomicsInterfaces = new bytes4[](2);
         transferTokenomicsInterfaces[0] = type(DynamicTokenomicsInterface).interfaceId;
         transferTokenomicsInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
+
         bytes4[] memory inflationInterfaces = new bytes4[](2);
         inflationInterfaces[0] = type(InflationInterface).interfaceId;
         inflationInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
 
+        bytes4[] memory lmInterfaces = new bytes4[](1);
+        lmInterfaces[0] = type(LiquidityMiningProxyInterface).interfaceId;
+
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TOKEN, 0, tokenInterfaces, tokenLibrary, _tax);
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TOKENOMICS, 0, transferTokenomicsInterfaces, tokenomicsLibrary, 0);
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TOKENOMICS, 1, inflationInterfaces, inflationLibrary, 0);
+        IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_LIQUIDITY_MINING, 0, lmInterfaces, lmLibrary, _lmTax);
     }
 
     function _deployToken(TokenLevel level, bytes32 refCode) internal returns (TokenDeployment memory) {
