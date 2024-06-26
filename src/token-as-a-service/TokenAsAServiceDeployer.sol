@@ -147,7 +147,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         ownerRewardCycles = DEFAULT_OWNER_REWARD_CYCLES;
         minTotalSupply = DEFAULT_MIN_TOTAL_SUPPLY;
 
-        liquidityMiningServiceTax = 0.5 * PERCENT_SCALING;
+        liquidityMiningServiceTax = 500; // 0.5 * PERCENT_SCALING
     }
 
     function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable, ERC165Upgradeable) view returns (bool) {
