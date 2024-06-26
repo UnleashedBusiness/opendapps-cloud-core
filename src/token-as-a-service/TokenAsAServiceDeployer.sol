@@ -95,6 +95,9 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
     uint256 public minTotalSupply;
 
     bytes32 public constant GROUP_LIQUIDITY_MINING = keccak256("LIQUIDITY_MINING"); //DO NOT MOVE! Breaks memory!
+    uint256 public constant PERCENT_SCALING = 1000; //DO NOT MOVE! Breaks memory!
+
+    uint256 public liquidityMiningServiceTax;
 
     using SafeMathUpgradeable for uint256;
     using AddressUpgradeable for address;
@@ -143,6 +146,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         ownerRewardsReleaseBlocks = DEFAULT_OWNER_REWARD_RELEASE_BLOCKS;
         ownerRewardCycles = DEFAULT_OWNER_REWARD_CYCLES;
         minTotalSupply = DEFAULT_MIN_TOTAL_SUPPLY;
+
+        liquidityMiningServiceTax = 0.5 * PERCENT_SCALING;
     }
 
     function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable, ERC165Upgradeable) view returns (bool) {
@@ -213,7 +218,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_LIQUIDITY_MINING, 0, lmInterfaces);
     }
 
-    function registerLiquidityMiningLibraryAddress(address _libraryAddress, uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
+    function registerLiquidityMiningLibraryAddress(address _libraryAddress, uint256 taxSize, uint256 serviceTax) external onlyRole(LOCAL_MANAGER_ROLE) {
         bytes4[] memory lmInterfaces = new bytes4[](1);
         lmInterfaces[0] = type(LiquidityMiningProxyInterface).interfaceId;
 
@@ -221,6 +226,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
             GROUP_LIQUIDITY_MINING, 0,
             lmInterfaces, _libraryAddress, taxSize
         );
+
+        liquidityMiningServiceTax = serviceTax;
     }
 
     function setTokenDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
@@ -300,7 +307,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
             )
         );
 
-        (address[] memory controllerList, uint256[] memory controllerPercentList) = _buildControllerList(refCode);
+        (address[] memory controllerList, uint256[] memory controllerPercentList) = _buildControllerList(refCode, deployTokenDefaultTax);
 
         AddressUpgradeable.functionCall(
             deployment.tokenomics,
@@ -333,14 +340,14 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         address lmAddress = IContractDeployerInterface(contractDeployer)
             .deployTemplateWithProxy{value: msg.value}(msg.sender, GROUP_LIQUIDITY_MINING, 0, bytes(""), refCode);
 
-        (address[] memory controllerList, uint256[] memory controllerPercentList) = _buildControllerList(refCode);
+        (address[] memory controllerList, uint256[] memory controllerPercentList) = _buildControllerList(refCode, liquidityMiningServiceTax);
 
         AddressUpgradeable.functionCall(
             lmAddress,
             abi.encodeWithSignature(
                 "initialize(address,uint256,address[],uint256[])",
                 tokenAddress,
-                10,
+                PERCENT_SCALING,
                 controllerList,
                 controllerPercentList
             )
@@ -447,7 +454,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         );
     }
 
-    function _buildControllerList(bytes32 refCode) internal view returns (address[] memory, uint256[] memory) {
+    function _buildControllerList(bytes32 refCode, uint256 serviceTax) internal view returns (address[] memory, uint256[] memory) {
         address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
 
         (uint256 percent, address referral) = IReferralsEngine(referralEngine).getCompensationPercent(refCode);
@@ -457,10 +464,10 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         controllerList[0] = rewardsTreasury;
         if (referral != address(0)) {
             controllerList[1] = referral;
-            controllerPercentList[1] = percent.mul(deployTokenDefaultTax).div(100);
-            controllerPercentList[0] = deployTokenDefaultTax.sub(controllerPercentList[1]);
+            controllerPercentList[1] = percent.mul(serviceTax).div(100);
+            controllerPercentList[0] = serviceTax.sub(controllerPercentList[1]);
         } else {
-            controllerPercentList[0] = deployTokenDefaultTax;
+            controllerPercentList[0] = serviceTax;
         }
 
         return (controllerList, controllerPercentList);
