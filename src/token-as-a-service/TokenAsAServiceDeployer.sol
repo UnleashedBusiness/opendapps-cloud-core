@@ -395,6 +395,14 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_TOKENOMICS, inflation);
     }
 
+    function upgradeLiquidityMiningProxy(address proxy) payable external {
+        if (msg.sender != OwnableUpgradeable(proxy).owner()) {
+            revert OnlyOwnerPermittedOperation(msg.sender);
+        }
+
+        IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_LIQUIDITY_MINING, proxy);
+    }
+
     function _enableTokenomicsForDEX(address router, address token, address pair, address _weth, address treasury) internal {
         address tokenomicsAddress = TokenAsAServiceInterface(token).tokenomics();
         DynamicTokenomicsInterface(tokenomicsAddress).addTaxForPath(pair, address(0), 0);
