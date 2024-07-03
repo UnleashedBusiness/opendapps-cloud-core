@@ -18,6 +18,7 @@ import {IWETH} from "@uniswap/v2-periphery/contracts/interfaces/IWETH.sol";
 import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 
+import {IReferralsEngine} from "@unleashed/opendapps-cloud-interfaces/deployer/IReferralsEngine.sol";
 import {IContractDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/IContractDeployerInterface.sol";
 import {TokenAsAServiceDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceDeployerInterface.sol";
 import {TokenAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceInterface.sol";
@@ -25,6 +26,7 @@ import {DynamicTokenomicsInterface} from "@unleashed/opendapps-cloud-interfaces/
 import {InflationInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/InflationInterface.sol";
 import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 import {SecondaryServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/SecondaryServiceDeployableInterface.sol";
+import {LiquidityMiningProxyInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/LiquidityMiningProxyInterface.sol";
 
 import {OwnershipNFTCollection} from "./../ownership/OwnershipNFTCollection.sol";
 import {LiquidityUtils} from "./../lib/LiquidityUtils.sol";
@@ -52,12 +54,23 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
     event RefCodeUsed(bytes32 indexed code, address indexed receiver, uint256 ammount);
     event TokenServiceDeployed(address indexed creator, uint8 indexed typeId, address contractAddress, address tokenomicsAddress, address inflationAddress, address treasuryAddress);
+    event LiquidityMiningServiceDeployed(address indexed creator, address indexed tokenAddress, address contractAddress);
+
+    struct TokenInitializationData {
+        TokenDeployment deployment;
+        string name;
+        string ticker;
+        uint256 maxSupply;
+        uint256 initialSupplyPercent;
+        string metadataUrl;
+        bytes32 refCode;
+    }
 
     bytes32 public constant LOCAL_MANAGER_ROLE = keccak256("LOCAL_MANAGER_ROLE");
 
     bytes32 public constant GROUP_TOKENOMICS = keccak256("Tokenomics");
     bytes32 public constant GROUP_TOKEN = keccak256("Token");
-    bytes32 public constant GROUP_TREASURY = keccak256("TREASURY");
+    bytes32 public constant GROUP_TREASURY = keccak256("TREASURY"); //OLD DO NOT REMOVE
 
     uint256 public constant DEFAULT_MIN_TOTAL_SUPPLY = 1 ether;
     uint256 public constant DEFAULT_MIN_ETH_LIQUIDITY_AMOUNT = 1 ether;
@@ -81,6 +94,11 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
     uint256 public minTotalSupply;
 
+    bytes32 public constant GROUP_LIQUIDITY_MINING = keccak256("LIQUIDITY_MINING"); //DO NOT MOVE! Breaks memory!
+    uint256 public constant PERCENT_SCALING = 1000; //DO NOT MOVE! Breaks memory!
+
+    uint256 public liquidityMiningServiceTax;
+
     using SafeMathUpgradeable for uint256;
     using AddressUpgradeable for address;
     using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
@@ -101,8 +119,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
     function initialize(
         address _contractDeployer, address _rewardsTreasury,
-        address tokenLibrary, address tokenomicsLibrary, address inflationLibrary,
-        uint256 _tax, uint256 _deployTokenDefaultTax, address nftOwnershipContract
+        address tokenLibrary, address tokenomicsLibrary, address inflationLibrary, address lmLibrary,
+        uint256 _tax, uint256 _lmTax, uint256 _deployTokenDefaultTax, address nftOwnershipContract
     ) public initializer {
         if (!ERC165CheckerUpgradeable.supportsInterface(_contractDeployer, type(IContractDeployerInterface).interfaceId)) {
             revert ProvidedAddressNotCompatibleWithRequiredInterfaces(_contractDeployer, type(IContractDeployerInterface).interfaceId);
@@ -117,7 +135,7 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         contractDeployer = _contractDeployer;
         rewardsTreasury = _rewardsTreasury;
 
-        _initializeTemplates(tokenLibrary, tokenomicsLibrary, inflationLibrary, _tax);
+        _initializeTemplates(tokenLibrary, tokenomicsLibrary, inflationLibrary, lmLibrary, _tax, _lmTax);
 
         ownershipNFTCollection = nftOwnershipContract;
 
@@ -128,6 +146,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         ownerRewardsReleaseBlocks = DEFAULT_OWNER_REWARD_RELEASE_BLOCKS;
         ownerRewardCycles = DEFAULT_OWNER_REWARD_CYCLES;
         minTotalSupply = DEFAULT_MIN_TOTAL_SUPPLY;
+
+        liquidityMiningServiceTax = 500; // 0.5 * PERCENT_SCALING
     }
 
     function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable, ERC165Upgradeable) view returns (bool) {
@@ -154,16 +174,60 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKEN, 0, _token);
     }
 
+    function refreshTokenLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory tokenInterfaces = new bytes4[](3);
+        tokenInterfaces[0] = type(IERC20Upgradeable).interfaceId;
+        tokenInterfaces[1] = type(TokenAsAServiceInterface).interfaceId;
+        tokenInterfaces[2] = type(ServiceDeployableInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_TOKEN, 0, tokenInterfaces);
+    }
+
     function setDynamicTokenomicsLibrary(address _tokenomics) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKENOMICS, 0, _tokenomics);
+    }
+
+    function refreshDynamicTokenomicsLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory transferTokenomicsInterfaces = new bytes4[](2);
+        transferTokenomicsInterfaces[0] = type(DynamicTokenomicsInterface).interfaceId;
+        transferTokenomicsInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_TOKENOMICS, 0, transferTokenomicsInterfaces);
     }
 
     function setInflationLibrary(address _inflation) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TOKENOMICS, 1, _inflation);
     }
 
-    function setTreasuryLibrary(address _treasury) external onlyRole(LOCAL_MANAGER_ROLE) {
-        IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_TREASURY, 0, _treasury);
+    function refreshInflationTokenomicsLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory inflationInterfaces = new bytes4[](2);
+        inflationInterfaces[0] = type(InflationInterface).interfaceId;
+        inflationInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_TOKENOMICS, 1, inflationInterfaces);
+    }
+
+    function setLiquidityMiningLibrary(address _library) external onlyRole(LOCAL_MANAGER_ROLE) {
+        IContractDeployerInterface(contractDeployer).upgradeTemplate(GROUP_LIQUIDITY_MINING, 0, _library);
+    }
+
+    function refreshLiquidityMiningLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory lmInterfaces = new bytes4[](1);
+        lmInterfaces[0] = type(LiquidityMiningProxyInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_LIQUIDITY_MINING, 0, lmInterfaces);
+    }
+
+    function registerLiquidityMiningLibraryAddress(address _libraryAddress, uint256 taxSize, uint256 serviceTax) external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory lmInterfaces = new bytes4[](1);
+        lmInterfaces[0] = type(LiquidityMiningProxyInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).registerTemplate(
+            GROUP_LIQUIDITY_MINING, 0,
+            lmInterfaces, _libraryAddress, taxSize
+        );
+
+        liquidityMiningServiceTax = serviceTax;
     }
 
     function setTokenDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
@@ -212,106 +276,93 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
     }
 
     // METHODS - PUBLIC
-    function deployBasicToken(
-        string calldata name, string calldata ticker, uint256 supply, bytes32 refCode
+    function deployToken(
+        TokenDeploymentBaseInputs calldata tokenBaseInputs,
+        TokenDeploymentInflationInputs calldata tokenInflationInputs,
+        bytes32 refCode
     ) payable external returns (TokenDeployment memory)
     {
-        if (minTotalSupply > supply) {
-            revert TotalSupplyBelowAllowedValues(minTotalSupply, supply);
+        if (minTotalSupply > tokenBaseInputs.supply) {
+            revert TotalSupplyBelowAllowedValues(minTotalSupply, tokenBaseInputs.supply);
         }
 
-        TokenDeployment memory deployment = _deployToken(TokenLevel.Basic, refCode);
+        TokenDeployment memory deployment = _deployToken(
+            tokenInflationInputs.enabled ? TokenLevel.InflationAdvanced : TokenLevel.HardcapSimple,
+            refCode
+        );
 
+        uint256 ownershipId = _mintOwnerToken(tokenBaseInputs.metadataUrl);
         AddressUpgradeable.functionCall(
             deployment.token,
             abi.encodeWithSignature(
                 "initialize(string,string,address,address,uint256,uint256,address,uint256)",
-                name, ticker, deployment.tokenomics, deployment.inflation,
-                supply, 100, address(0), 0
+                tokenBaseInputs.name,
+                tokenBaseInputs.ticker,
+                deployment.tokenomics,
+                deployment.inflation,
+                tokenBaseInputs.supply,
+                tokenInflationInputs.enabled ? tokenInflationInputs.initialSupplyPercent : 100,
+                ownershipNFTCollection,
+                ownershipId
             )
         );
-        // TODO: ODAPPS-415: fetch referral address
-        // TODO: ODAPPS-415: Controller list support
+
+        (address[] memory controllerList, uint256[] memory controllerPercentList) = _buildControllerList(refCode, deployTokenDefaultTax);
+
         AddressUpgradeable.functionCall(
             deployment.tokenomics,
-            abi.encodeWithSignature("initialize(address,address,uint256)",
-                deployment.token, rewardsTreasury, deployTokenDefaultTax
+            abi.encodeWithSignature("initialize(address,address[],uint256[])",
+                deployment.token, controllerList, controllerPercentList
             )
         );
+
+        if (tokenInflationInputs.enabled) {
+            uint256 rewardsSupply = tokenBaseInputs.supply.sub(tokenBaseInputs.supply.mul(tokenInflationInputs.initialSupplyPercent).div(100));
+
+            // TODO: ODAPPS-417: Controller list support
+            AddressUpgradeable.functionCall(
+                deployment.inflation,
+                abi.encodeWithSignature("initialize(address,address,uint256,uint256,uint256,uint256)",
+                    deployment.token, rewardsTreasury, deployTokenDefaultInflationTax,
+                    rewardsSupply, tokenInflationInputs.rewardRounds, tokenInflationInputs.blockPerCycle
+                )
+            );
+        }
+
         DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
-
-        OwnableUpgradeable(deployment.token).transferOwnership(msg.sender);
-
         SafeERC20Upgradeable.safeTransfer(IERC20Upgradeable(deployment.token), msg.sender, IERC20Upgradeable(deployment.token).balanceOf(address(this)));
 
         emit TokenServiceDeployed(msg.sender, uint8(TokenLevel.Basic), deployment.token, deployment.tokenomics, deployment.inflation, deployment.treasury);
         return deployment;
     }
 
-    function deployHardCapToken(
-        string calldata name, string calldata ticker, uint256 supply, uint256 ownerAmount,
-        bool complexTax, string calldata metadataUrl, bytes32 refCode
-    ) payable external returns (TokenDeployment memory)
-    {
-        if (minTotalSupply > supply) {
-            revert TotalSupplyBelowAllowedValues(minTotalSupply, supply);
-        }
+    function deployLiquidityMiningProxy(address tokenAddress, bytes32 refCode) payable external returns (address) {
+        address lmAddress = IContractDeployerInterface(contractDeployer)
+            .deployTemplateWithProxy{value: msg.value}(msg.sender, GROUP_LIQUIDITY_MINING, 0, bytes(""), refCode);
 
-        if (supply.mul(10).div(100) < ownerAmount) {
-            revert OwnerShareGreaterThanAllowed(supply.mul(10).div(100), ownerAmount);
-        }
+        (address[] memory controllerList, uint256[] memory controllerPercentList) = _buildControllerList(refCode, liquidityMiningServiceTax);
 
-        TokenDeployment memory deployment = _deployToken(complexTax ? TokenLevel.HardcapAdvanced : TokenLevel.HardcapSimple, refCode);
-
-        // TODO: ODAPPS-415: fetch referral address
-        _initializeTokenAndTokenomics(deployment, name, ticker, supply, 100, metadataUrl);
-
-        for (uint256 i = 0; i < (complexTax ? 3 : 1); i++) {
-            DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
-        }
-
-        emit TokenServiceDeployed(msg.sender, uint8(complexTax ? TokenLevel.HardcapAdvanced : TokenLevel.HardcapSimple), deployment.token, deployment.tokenomics, deployment.inflation, deployment.treasury);
-        return deployment;
-    }
-
-    function deployInflationaryToken(
-        string calldata name, string calldata ticker, uint256 maxSupply,
-        uint256 initialSupplyPercent, uint256 rewardRounds, uint256 blockPerCycle,
-        uint256 ownerAmount, string calldata metadataUrl, bytes32 refCode
-    ) payable external returns (TokenDeployment memory) {
-        if (minTotalSupply > maxSupply) {
-            revert TotalSupplyBelowAllowedValues(minTotalSupply, maxSupply);
-        }
-
-        if (maxSupply.mul(10).div(100) < ownerAmount) {
-            revert OwnerShareGreaterThanAllowed(maxSupply.mul(10).div(100), ownerAmount);
-        }
-
-        if (initialSupplyPercent < 50 && initialSupplyPercent > 90) {
-            revert InitialSupplyExceedsAllowedValues(50, 90, initialSupplyPercent);
-        }
-
-        // TODO: ODAPPS-415,ODAPPS-417: fetch referral address
-        TokenDeployment memory deployment = _deployToken(TokenLevel.InflationAdvanced, refCode);
-        _initializeTokenAndTokenomics(deployment, name, ticker, maxSupply, initialSupplyPercent, metadataUrl);
-
-        uint256 rewardsSupply = maxSupply.sub(maxSupply.mul(initialSupplyPercent).div(100));
-
-        // TODO: ODAPPS-417: Controller list support
         AddressUpgradeable.functionCall(
-            deployment.inflation,
-            abi.encodeWithSignature("initialize(address,address,uint256,uint256,uint256,uint256)",
-                deployment.token, rewardsTreasury, deployTokenDefaultInflationTax,
-                rewardsSupply, rewardRounds, blockPerCycle
+            lmAddress,
+            abi.encodeWithSignature(
+                "initialize(address,uint256,address[],uint256[])",
+                tokenAddress,
+                PERCENT_SCALING,
+                controllerList,
+                controllerPercentList
             )
         );
 
-        for (uint256 i = 0; i < 3; i++) {
-            DynamicTokenomicsInterface(deployment.tokenomics).createTaxableConfig();
+        if (ERC165CheckerUpgradeable.supportsInterface(tokenAddress, type(TokenAsAServiceInterface).interfaceId)) {
+            address tokenomics = TokenAsAServiceInterface(tokenAddress).tokenomics();
+            DynamicTokenomicsInterface(tokenomics).addToTaxablePathWhitelist(lmAddress);
         }
 
-        emit TokenServiceDeployed(msg.sender, uint8(TokenLevel.InflationAdvanced), deployment.token, deployment.tokenomics, deployment.inflation, deployment.treasury);
-        return deployment;
+        OwnableUpgradeable(lmAddress).transferOwnership(msg.sender);
+
+        emit LiquidityMiningServiceDeployed(msg.sender, tokenAddress, lmAddress);
+
+        return lmAddress;
     }
 
     function enableTokenomicsForDEX(address router, address token) external
@@ -344,6 +395,14 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_TOKENOMICS, inflation);
     }
 
+    function upgradeLiquidityMiningProxy(address proxy) payable external {
+        if (msg.sender != OwnableUpgradeable(proxy).owner()) {
+            revert OnlyOwnerPermittedOperation(msg.sender);
+        }
+
+        IContractDeployerInterface(contractDeployer).upgradeContractWithProxy(GROUP_LIQUIDITY_MINING, proxy);
+    }
+
     function _enableTokenomicsForDEX(address router, address token, address pair, address _weth, address treasury) internal {
         address tokenomicsAddress = TokenAsAServiceInterface(token).tokenomics();
         DynamicTokenomicsInterface(tokenomicsAddress).addTaxForPath(pair, address(0), 0);
@@ -364,23 +423,32 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
 
     function _initializeTemplates(
         address tokenLibrary,
-        address tokenomicsLibrary, address inflationLibrary,
-        uint256 _tax
+        address tokenomicsLibrary,
+        address inflationLibrary,
+        address lmLibrary,
+        uint256 _tax,
+        uint256 _lmTax
     ) internal {
         bytes4[] memory tokenInterfaces = new bytes4[](3);
         tokenInterfaces[0] = type(IERC20Upgradeable).interfaceId;
         tokenInterfaces[1] = type(TokenAsAServiceInterface).interfaceId;
         tokenInterfaces[2] = type(ServiceDeployableInterface).interfaceId;
+
         bytes4[] memory transferTokenomicsInterfaces = new bytes4[](2);
         transferTokenomicsInterfaces[0] = type(DynamicTokenomicsInterface).interfaceId;
         transferTokenomicsInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
+
         bytes4[] memory inflationInterfaces = new bytes4[](2);
         inflationInterfaces[0] = type(InflationInterface).interfaceId;
         inflationInterfaces[1] = type(SecondaryServiceDeployableInterface).interfaceId;
 
+        bytes4[] memory lmInterfaces = new bytes4[](1);
+        lmInterfaces[0] = type(LiquidityMiningProxyInterface).interfaceId;
+
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TOKEN, 0, tokenInterfaces, tokenLibrary, _tax);
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TOKENOMICS, 0, transferTokenomicsInterfaces, tokenomicsLibrary, 0);
         IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_TOKENOMICS, 1, inflationInterfaces, inflationLibrary, 0);
+        IContractDeployerInterface(contractDeployer).registerTemplate(GROUP_LIQUIDITY_MINING, 0, lmInterfaces, lmLibrary, _lmTax);
     }
 
     function _deployToken(TokenLevel level, bytes32 refCode) internal returns (TokenDeployment memory) {
@@ -394,31 +462,22 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         );
     }
 
-    // TODO: ODAPPS-415: Add input for the referral address if supplied
-    function _initializeTokenAndTokenomics(
-        TokenDeployment memory deployment,
-        string calldata name, string calldata ticker,
-        uint256 maxSupply,
-        uint256 initialSupplyPercent, string calldata metadataUrl
-    ) internal {
-        AddressUpgradeable.functionCall(
-            deployment.token,
-            abi.encodeWithSignature("initialize(string,string,address,address,uint256,uint256,address,uint256)",
-                name, ticker, deployment.tokenomics, deployment.inflation,
-                maxSupply, initialSupplyPercent,
-                ownershipNFTCollection,
-                _mintOwnerToken(metadataUrl)
-            )
-        );
+    function _buildControllerList(bytes32 refCode, uint256 serviceTax) internal view returns (address[] memory, uint256[] memory) {
+        address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
 
-        // TODO: ODAPPS-415: Update to lists for controller
-        AddressUpgradeable.functionCall(
-            deployment.tokenomics,
-            abi.encodeWithSignature("initialize(address,address,uint256)",
-                deployment.token, rewardsTreasury, deployTokenDefaultTax
-            )
-        );
+        (uint256 percent, address referral) = IReferralsEngine(referralEngine).getCompensationPercent(refCode);
+
+        address[] memory controllerList = new address[](referral != address(0) ? 2 : 1);
+        uint256[] memory controllerPercentList = new uint256[](referral != address(0) ? 2 : 1);
+        controllerList[0] = rewardsTreasury;
+        if (referral != address(0)) {
+            controllerList[1] = referral;
+            controllerPercentList[1] = percent.mul(serviceTax).div(100);
+            controllerPercentList[0] = serviceTax.sub(controllerPercentList[1]);
+        } else {
+            controllerPercentList[0] = serviceTax;
+        }
+
+        return (controllerList, controllerPercentList);
     }
-
-
 }

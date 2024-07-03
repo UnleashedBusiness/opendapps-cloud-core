@@ -99,12 +99,29 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
         );
     }
 
+    function refreshVaultLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory vaultInterfaces = new bytes4[](1);
+        vaultInterfaces[0] = type(IPersonalVault).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_PERSONAL_VAULT, 0, vaultInterfaces);
+    }
+
     function setStakingLibraryAddress(address _libraryAddress) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeTemplate(
             GROUP_STAKING,
             0,
             _libraryAddress
         );
+    }
+
+    function refreshStakingLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory stakingInterfaces = new bytes4[](1);
+        stakingInterfaces[0] = type(StakingAsAServiceInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(
+            GROUP_STAKING,
+            0,
+            stakingInterfaces);
     }
 
     function setDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {

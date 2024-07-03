@@ -129,6 +129,18 @@ contract DecentralizedEntityDeployer is DecentralizedEntityDeployerInterface, In
         );
     }
 
+    function refreshEntityLibrariesInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        REQUIRED_ENTITY_INTERFACES = [
+            type(DecentralizedEntityInterface).interfaceId,
+            type(GovernorInterface).interfaceId,
+            type(ServiceDeployableInterface).interfaceId
+        ];
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_DECENTRALIZED_ENTITY, uint8(EntityType.SingleOwner), REQUIRED_ENTITY_INTERFACES);
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_DECENTRALIZED_ENTITY, uint8(EntityType.MultiSign), REQUIRED_ENTITY_INTERFACES);
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_DECENTRALIZED_ENTITY, uint8(EntityType.MultiSignShares), REQUIRED_ENTITY_INTERFACES);
+    }
+
     function deploySingleOwnerEntity(string calldata entityName, string calldata metadataUrl) external returns (EntityDeployment memory) {
         uint256 ownerTokenID = OwnershipNFTCollection(singleOwnerNFTOwnershipContract).nextTokenId();
         OwnershipNFTCollection(singleOwnerNFTOwnershipContract).mint(msg.sender, metadataUrl);

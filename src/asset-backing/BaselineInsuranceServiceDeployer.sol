@@ -15,6 +15,8 @@ import {IContractDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/
 import {AssetBackingInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/AssetBackingInterface.sol";
 import {BaselineInsuranceDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/BaselineInsuranceDeployerInterface.sol";
 import {SmartSwapPriceModelInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/SmartSwapPriceModelInterface.sol";
+import {MultiAssetBackingInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/MultiAssetBackingInterface.sol";
+import {SmartSwapMultiPriceModelInterface} from "@unleashed/opendapps-cloud-interfaces/asset-backing/SmartSwapMultiPriceModelInterface.sol";
 
     error ProvidedAddressNotCompatibleWithRequiredInterfaces();
     error TokenAlreadyHasBacking();
@@ -33,13 +35,16 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
     uint256 public defaultThreshold = 0.001 ether;
     uint256 public defaultBlocksDistance = 10;
 
+    address public swapRouter;
+
     using SafeMathUpgradeable for uint256;
     using AddressUpgradeable for address;
 
     function initialize(
-        address _contractDeployer, address assetBackingLibrary,
-        address _simpleMultiplierModelLibrary, address _tanXModelLibrary,
-        uint256 _tax
+        address _contractDeployer,
+        address assetBackingLibrary, address multiAssetBackingLibrary,
+        address _simpleMultiplierModelLibrary, address _tanXModelLibrary, address _multiSimpleMultiplierModelLibrary,
+        uint256 _tax, uint256 _multiTax
     ) public initializer {
         if (!ERC165CheckerUpgradeable.supportsInterface(_contractDeployer, type(IContractDeployerInterface).interfaceId)) {
             revert ProvidedAddressNotCompatibleWithRequiredInterfaces();
@@ -56,13 +61,24 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
         bytes4[] memory backingInterfaces = new bytes4[](1);
         backingInterfaces[0] = type(AssetBackingInterface).interfaceId;
 
+        bytes4[] memory backingMultiInterfaces = new bytes4[](1);
+        backingMultiInterfaces[0] = type(MultiAssetBackingInterface).interfaceId;
+
         IContractDeployerInterface(contractDeployer).registerTemplate(
             GROUP_ASSET_BACKING, 0,
             backingInterfaces, assetBackingLibrary, _tax
         );
 
+        IContractDeployerInterface(contractDeployer).registerTemplate(
+            GROUP_ASSET_BACKING, 1,
+            backingMultiInterfaces, multiAssetBackingLibrary, _multiTax
+        );
+
         bytes4[] memory modelInterfaces = new bytes4[](1);
         modelInterfaces[0] = type(SmartSwapPriceModelInterface).interfaceId;
+
+        bytes4[] memory multiModelInterfaces = new bytes4[](1);
+        multiModelInterfaces[0] = type(SmartSwapMultiPriceModelInterface).interfaceId;
 
         IContractDeployerInterface(contractDeployer).registerTemplate(
             GROUP_ASSET_BACKING_SWAP_MODEL, 0,
@@ -72,7 +88,10 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
             GROUP_ASSET_BACKING_SWAP_MODEL, 1,
             modelInterfaces, _tanXModelLibrary, 0
         );
-
+        IContractDeployerInterface(contractDeployer).registerTemplate(
+            GROUP_ASSET_BACKING_SWAP_MODEL, 2,
+            multiModelInterfaces, _multiSimpleMultiplierModelLibrary, 0
+        );
     }
 
     function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable, ERC165Upgradeable) view returns (bool) {
@@ -82,12 +101,53 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
     }
 
     // METHODS - MANAGER
+    function setSwapRouter(address _router) external onlyRole(LOCAL_MANAGER_ROLE) {
+        swapRouter = _router;
+    }
+
     function setBackingLibraryAddress(address _libraryAddress) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeTemplate(
             GROUP_ASSET_BACKING,
             0,
             _libraryAddress
         );
+    }
+
+    function registerMultiBackingLibraryAddress(address _libraryAddress, address _multiSimpleMultiplierModelLibrary, uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory backingMultiInterfaces = new bytes4[](1);
+        backingMultiInterfaces[0] = type(MultiAssetBackingInterface).interfaceId;
+
+        bytes4[] memory multiModelInterfaces = new bytes4[](1);
+        multiModelInterfaces[0] = type(SmartSwapMultiPriceModelInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).registerTemplate(
+            GROUP_ASSET_BACKING, 1,
+            backingMultiInterfaces, _libraryAddress, taxSize
+        );
+
+        IContractDeployerInterface(contractDeployer).registerTemplate(
+            GROUP_ASSET_BACKING_SWAP_MODEL, 2,
+            multiModelInterfaces, _multiSimpleMultiplierModelLibrary, 0
+        );
+    }
+
+    function setMultiBackingLibraryAddress(address _libraryAddress) external onlyRole(LOCAL_MANAGER_ROLE) {
+        IContractDeployerInterface(contractDeployer).upgradeTemplate(
+            GROUP_ASSET_BACKING,
+            1,
+            _libraryAddress
+        );
+    }
+
+    function refreshBackingLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory backingInterfaces = new bytes4[](1);
+        backingInterfaces[0] = type(AssetBackingInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_ASSET_BACKING, 0, backingInterfaces);
+
+        bytes4[] memory backingMultiInterfaces = new bytes4[](1);
+        backingMultiInterfaces[0] = type(MultiAssetBackingInterface).interfaceId;
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_ASSET_BACKING, 1, backingMultiInterfaces);
     }
 
     function setDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
@@ -98,11 +158,20 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
         );
     }
 
+    function setMultiDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
+        IContractDeployerInterface(contractDeployer).upgradeDeployTax(
+            GROUP_ASSET_BACKING,
+            1,
+            taxSize
+        );
+    }
+
     // METHODS - PUBLIC
     function deploySimpleModel(address erc20Token, address backingToken, bytes32 refCode) payable external returns (address) {
-        if (!ERC165CheckerUpgradeable.supportsInterface(erc20Token, type(IERC20Upgradeable).interfaceId)) {
-            revert ProvidedAddressNotCompatibleWithRequiredInterfaces();
-        }
+        // Thanks DSUD
+        //if (!ERC165CheckerUpgradeable.supportsInterface(erc20Token, type(IERC20Upgradeable).interfaceId)) {
+        //    revert ProvidedAddressNotCompatibleWithRequiredInterfaces();
+        //}
 
         address model = IContractDeployerInterface(contractDeployer).deployTemplate(
             msg.sender, GROUP_ASSET_BACKING_SWAP_MODEL, 0,
@@ -130,6 +199,49 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
                 "initialize(address,address,address,uint256,uint256,bool)",
                 backingToken, erc20Token,
                 model, defaultThreshold, defaultBlocksDistance, false
+            )
+        );
+        OwnableUpgradeable(backing).transferOwnership(msg.sender);
+
+        emit BaselineInsuranceServiceDeployed(msg.sender, erc20Token, backing);
+        return backing;
+    }
+
+    function deployMultiSimpleModel(address erc20Token, address[] memory backingTokens, bytes32 refCode) payable external returns (address) {
+        // Thanks DSUD
+        //if (!ERC165CheckerUpgradeable.supportsInterface(erc20Token, type(IERC20Upgradeable).interfaceId)) {
+        //    revert ProvidedAddressNotCompatibleWithRequiredInterfaces();
+        //}
+
+        address model = IContractDeployerInterface(contractDeployer).deployTemplate(
+            msg.sender, GROUP_ASSET_BACKING_SWAP_MODEL, 2,
+            bytes(""),
+            refCode
+        );
+
+        AddressUpgradeable.functionCall(
+            model,
+            abi.encodeWithSignature(
+                "initialize(uint256)",
+                DEFAULT_SIMPLE_MODEL_MULTIPLIER
+            )
+        );
+
+        address backing = IContractDeployerInterface(contractDeployer).deployTemplate{value: msg.value}(
+            msg.sender, GROUP_ASSET_BACKING, 1,
+            bytes(""),
+            refCode
+        );
+
+        uint256[] memory minThreshold = new uint256[](1);
+        minThreshold[0] = 0;
+
+        AddressUpgradeable.functionCall(
+            backing,
+            abi.encodeWithSignature(
+                "initialize(address[],uint256[],address,address,uint256,address,bool)",
+                backingTokens, minThreshold, erc20Token,
+                model, defaultBlocksDistance, swapRouter, false
             )
         );
         OwnableUpgradeable(backing).transferOwnership(msg.sender);

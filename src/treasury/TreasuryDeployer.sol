@@ -102,12 +102,26 @@ contract TreasuryDeployer is TreasuryDeployerInterface, Initializable, ERC165, A
         );
     }
 
+    function refreshPocketLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory pocketInterfaces = new bytes4[](1);
+        pocketInterfaces[0] = type(TreasuryPocketInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_POCKET, 0, pocketInterfaces);
+    }
+
     function setTreasuryLibraryAddress(address _libraryAddress) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeTemplate(
             GROUP_TREASURY,
             0,
             _libraryAddress
         );
+    }
+
+    function refreshTreasuryLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
+        bytes4[] memory treasuryInterfaces = new bytes4[](1);
+        treasuryInterfaces[0] = type(TreasuryInterface).interfaceId;
+
+        IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_TREASURY, 0, treasuryInterfaces);
     }
 
     function setDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
