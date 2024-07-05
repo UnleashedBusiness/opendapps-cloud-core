@@ -87,6 +87,8 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
 
         rewardTokensCache.add(address(0));
         deployer = _deployer;
+
+        _deployPocket(_controller);
     }
 
     function initializePockets(address _deployer, address pocketTemplate) external {
@@ -158,6 +160,10 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         payees.remove(controller);
         controller = _controller;
         payees.add(_controller);
+
+        if (pockets[_controller] == address(0)) {
+            _deployPocket(_controller);
+        }
     }
 
     function changePocketTemplate(address _template) external onlyOwner {
@@ -193,6 +199,9 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         payees.add(account);
         percents[account] = shares;
         percents[controller] = percents[controller].sub(shares);
+        if (pockets[account] == address(0)) {
+            _deployPocket(account);
+        }
     }
 
     function changePayeeShare(address account, uint256 shares) external onlyValidShares(account, shares) onlyOwner {
