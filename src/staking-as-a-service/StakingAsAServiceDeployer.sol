@@ -169,7 +169,7 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
             abi.encodeWithSignature(
                 "initialize(address,address,uint256,address[],uint256[])",
                 IContractDeployerInterface(contractDeployer).currentTemplate(GROUP_PERSONAL_VAULT, 0),
-                erc20Token
+                erc20Token, PERCENT_SCALING, receiverList, receiverPercentList
             )
         );
 
