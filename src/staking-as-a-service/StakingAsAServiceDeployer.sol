@@ -59,7 +59,7 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
             if (!ServiceDeployableInterface(masterDeployable).canAccessFromDeployer(msg.sender) || (expectedOwner != address(0) && expectedOwner != msg.sender)) {
                 revert OnlyOwnerPermittedOperation(msg.sender);
             }
-        } else if (OwnableUpgradeable(masterDeployable).owner() != msg.sender) {
+        } else if (OwnableUpgradeable(service).owner() != msg.sender) {
             revert OnlyOwnerPermittedOperation(msg.sender);
         }
 
