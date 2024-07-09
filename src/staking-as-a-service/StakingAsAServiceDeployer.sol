@@ -53,9 +53,16 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
         }
 
         address masterDeployable = SecondaryServiceDeployableInterface(service).masterDeployable();
-        if (!ServiceDeployableInterface(masterDeployable).canAccessFromDeployer(msg.sender) || (expectedOwner != address(0) && expectedOwner != msg.sender)) {
+        bool isMasterServiceDeployable = ERC165CheckerUpgradeable.supportsInterface(masterDeployable, type(ServiceDeployableInterface).interfaceId);
+
+        if (isMasterServiceDeployable) {
+            if (!ServiceDeployableInterface(masterDeployable).canAccessFromDeployer(msg.sender) || (expectedOwner != address(0) && expectedOwner != msg.sender)) {
+                revert OnlyOwnerPermittedOperation(msg.sender);
+            }
+        } else if (OwnableUpgradeable(masterDeployable).owner() != msg.sender) {
             revert OnlyOwnerPermittedOperation(msg.sender);
         }
+
         _;
     }
 
