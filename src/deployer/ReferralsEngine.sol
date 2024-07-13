@@ -103,6 +103,14 @@ contract ReferralsEngine is IReferralsEngine, Initializable, ERC165Upgradeable, 
         _enableCustomRefCodeForAddress(refCode, msg.sender, 0);
     }
 
+    function setDefaultReceiver(address target) external onlyRole(LOCAL_MANAGER_ROLE) {
+        if (target == address(0)) {
+            revert EmptyAddressError();
+        }
+
+        defaultReceiver = target;
+    }
+
     function assignRefCodeToAddress(bytes32 refCode, address receiver) external onlyRole(LOCAL_MANAGER_ROLE) {
         if (refCode == bytes32('')) {
             revert EmptyRefCodeError();

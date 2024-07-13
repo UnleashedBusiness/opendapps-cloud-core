@@ -199,16 +199,26 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
     function _buildServiceTaxationReceivers(bytes32 refCode) internal view returns (address[] memory, uint256[] memory) {
         address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
 
-        (uint256 percent, address referral) = IReferralsEngine(referralEngine).getCompensationPercent(refCode);
+        (uint256[] memory percents, address[] memory referrals) = IReferralsEngine(referralEngine).getTaxationReceivers(refCode);
 
-        address[] memory receiverList = new address[](referral != address(0) ? 2 : 1);
-        uint256[] memory receiverPercentList = new uint256[](referral != address(0) ? 2 : 1);
-        receiverList[0] = serviceTaxReceiver;
-        if (referral != address(0)) {
-            receiverList[1] = referral;
-            receiverPercentList[1] = serviceTax * percent / 100;
+        address[] memory receiverList = new address[](referrals.length > 0 ? referrals.length : 1);
+        uint256[] memory receiverPercentList = new uint256[](referrals.length > 0 ? referrals.length : 1);
+
+        if (referrals.length > 0) {
+            uint256 total = 0;
+            for (uint256 i = 0; i < referrals.length; i++) {
+                receiverList[i] = referrals[i];
+                receiverPercentList[i] = serviceTax * percents[i] / 100;
+                total += receiverPercentList[i];
+
+                if (total > serviceTax) {
+                    receiverPercentList[i] -= total - serviceTax;
+                }
+            }
+
             receiverPercentList[0] = serviceTax - receiverPercentList[1];
         } else {
+            receiverList[0] = serviceTaxReceiver;
             receiverPercentList[0] = serviceTax;
         }
 
