@@ -215,8 +215,6 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
                     receiverPercentList[i] -= total - serviceTax;
                 }
             }
-
-            receiverPercentList[0] = serviceTax - receiverPercentList[1];
         } else {
             receiverList[0] = serviceTaxReceiver;
             receiverPercentList[0] = serviceTax;
