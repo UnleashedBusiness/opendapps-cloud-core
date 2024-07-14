@@ -19,6 +19,7 @@ import {StakingAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/
 import {StakingAsAServiceDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/staking-as-a-service/StakingAsAServiceDeployerInterface.sol";
 import {TokenAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceInterface.sol";
 import {IPersonalVault} from "@unleashed/opendapps-cloud-interfaces/staking-as-a-service/PersonalVaultInterface.sol";
+import {IReferralsEngine} from "@unleashed/opendapps-cloud-interfaces/deployer/IReferralsEngine.sol";
 
     error TokenAlreadyHasStaking();
     error TokenHasNoStakingDeployed();
@@ -38,6 +39,11 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
 
     address public contractDeployer;
 
+    address public serviceTaxReceiver;
+    uint256 public serviceTax;
+
+    uint256 public constant PERCENT_SCALING = 10 ** 3; //DO NOT MOVE! Breaks memory!
+
     using SafeMathUpgradeable for uint256;
     using AddressUpgradeable for address;
 
@@ -47,15 +53,23 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
         }
 
         address masterDeployable = SecondaryServiceDeployableInterface(service).masterDeployable();
-        if (!ServiceDeployableInterface(masterDeployable).canAccessFromDeployer(msg.sender) || (expectedOwner != address(0) && expectedOwner != msg.sender)) {
+        bool isMasterServiceDeployable = ERC165CheckerUpgradeable.supportsInterface(masterDeployable, type(ServiceDeployableInterface).interfaceId);
+
+        if (isMasterServiceDeployable) {
+            if (!ServiceDeployableInterface(masterDeployable).canAccessFromDeployer(msg.sender) || (expectedOwner != address(0) && expectedOwner != msg.sender)) {
+                revert OnlyOwnerPermittedOperation(msg.sender);
+            }
+        } else if (OwnableUpgradeable(service).owner() != msg.sender) {
             revert OnlyOwnerPermittedOperation(msg.sender);
         }
+
         _;
     }
 
     function initialize(
         address _contractDeployer, address stakingLibrary,
-        address vaultTemplate, uint256 _tax
+        address vaultTemplate, uint256 _tax,
+        address _serviceTaxReceiver, uint256 _serviceTax
     ) public initializer {
         if (!ERC165CheckerUpgradeable.supportsInterface(_contractDeployer, type(IContractDeployerInterface).interfaceId)) {
             revert ProvidedAddressNotCompatibleWithRequiredInterfaces(_contractDeployer, type(IContractDeployerInterface).interfaceId);
@@ -82,6 +96,9 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
             GROUP_STAKING, 0,
             stakingInterfaces, stakingLibrary, _tax
         );
+
+        serviceTaxReceiver = _serviceTaxReceiver;
+        serviceTax = _serviceTax;
     }
 
     function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable, ERC165Upgradeable) view returns (bool) {
@@ -97,6 +114,14 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
             0,
             _libraryAddress
         );
+    }
+
+    function setServiceTaxReceiverAddress(address _address) external onlyRole(LOCAL_MANAGER_ROLE) {
+        serviceTaxReceiver = _address;
+    }
+
+    function setServiceTax(uint256 tax) external onlyRole(LOCAL_MANAGER_ROLE) {
+        serviceTax = tax;
     }
 
     function refreshVaultLibraryInterfaces() external onlyRole(LOCAL_MANAGER_ROLE) {
@@ -144,12 +169,14 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
             refCode
         );
 
+        (address[] memory receiverList, uint256[] memory receiverPercentList) = _buildServiceTaxationReceivers(refCode);
+
         AddressUpgradeable.functionCall(
             staking,
             abi.encodeWithSignature(
-                "initialize(address,address)",
+                "initialize(address,address,uint256,address[],uint256[])",
                 IContractDeployerInterface(contractDeployer).currentTemplate(GROUP_PERSONAL_VAULT, 0),
-                erc20Token
+                erc20Token, PERCENT_SCALING, receiverList, receiverPercentList
             )
         );
 
@@ -167,5 +194,32 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
             GROUP_STAKING,
             staking
         );
+    }
+
+    function _buildServiceTaxationReceivers(bytes32 refCode) internal view returns (address[] memory, uint256[] memory) {
+        address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
+
+        (uint256[] memory percents, address[] memory referrals) = IReferralsEngine(referralEngine).getTaxationReceivers(refCode);
+
+        address[] memory receiverList = new address[](referrals.length > 0 ? referrals.length : 1);
+        uint256[] memory receiverPercentList = new uint256[](referrals.length > 0 ? referrals.length : 1);
+
+        if (referrals.length > 0) {
+            uint256 total = 0;
+            for (uint256 i = 0; i < referrals.length; i++) {
+                receiverList[i] = referrals[i];
+                receiverPercentList[i] = serviceTax * percents[i] / 100;
+                total += receiverPercentList[i];
+
+                if (total > serviceTax) {
+                    receiverPercentList[i] -= total - serviceTax;
+                }
+            }
+        } else {
+            receiverList[0] = serviceTaxReceiver;
+            receiverPercentList[0] = serviceTax;
+        }
+
+        return (receiverList, receiverPercentList);
     }
 }

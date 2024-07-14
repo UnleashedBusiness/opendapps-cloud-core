@@ -11,6 +11,7 @@ import {IReferralsEngine} from "@unleashed/opendapps-cloud-interfaces/deployer/I
     error RefCodeAlreadyExistError(bytes32 refCode);
     error RefCodeOperationNotPermitted(bytes32 refCode, address sender);
     error EmptyAddressError();
+    error InvalidExtendedCodeReceiverAndPercentsInput(uint256 receiverSize, uint256 percentsSize);
     error EmptyRefCodeError();
     error InvalidCompensationPercent(uint256 percent);
 
@@ -23,6 +24,10 @@ contract ReferralsEngine is IReferralsEngine, Initializable, ERC165Upgradeable, 
     mapping(bytes32 => address) internal receivers;
     mapping(bytes32 => uint256) internal compensations;
     mapping(bytes32 => bool) internal blacklist;
+
+    mapping(bytes32 => address[]) internal receiversExtended;
+    mapping(bytes32 => uint256[]) internal compensationsExtended;
+    address public defaultReceiver;
 
     using SafeMathUpgradeable for uint256;
 
@@ -40,7 +45,7 @@ contract ReferralsEngine is IReferralsEngine, Initializable, ERC165Upgradeable, 
 
     function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable, ERC165Upgradeable) view returns (bool) {
         return interfaceId == type(IReferralsEngine).interfaceId
-            || AccessControlUpgradeable.supportsInterface(interfaceId)
+        || AccessControlUpgradeable.supportsInterface(interfaceId)
             || ERC165Upgradeable.supportsInterface(interfaceId);
     }
 
@@ -66,15 +71,44 @@ contract ReferralsEngine is IReferralsEngine, Initializable, ERC165Upgradeable, 
         }
     }
 
+    function getTaxationReceivers(bytes32 refCode) public view returns (uint256[] memory percents, address[] memory receiversArray) {
+        if (receivers[refCode] != address(0)) {
+            percents = new uint256[](2);
+            percents[0] = _getPercentInternal(refCode);
+            percents[1] = 100 - percents[0];
+
+            receiversArray = new address[](2);
+            receiversArray[0] = receivers[refCode];
+            receiversArray[1] = defaultReceiver;
+        } else if (receiversExtended[refCode].length > 0) {
+            percents = compensationsExtended[refCode];
+            receiversArray = receiversExtended[refCode];
+        } else {
+            percents = new uint256[](1);
+            percents[0] = 100;
+
+            receiversArray = new address[](1);
+            receiversArray[0] = defaultReceiver;
+        }
+    }
+
     function assignRefCodeToSelf(bytes32 refCode) external {
         if (refCode == bytes32('')) {
             revert EmptyRefCodeError();
         }
-        if (receivers[refCode] != address(0)) {
+        if (receivers[refCode] != address(0) || receiversExtended[refCode].length > 0) {
             revert RefCodeAlreadyExistError(refCode);
         }
 
         _enableCustomRefCodeForAddress(refCode, msg.sender, 0);
+    }
+
+    function setDefaultReceiver(address target) external onlyRole(LOCAL_MANAGER_ROLE) {
+        if (target == address(0)) {
+            revert EmptyAddressError();
+        }
+
+        defaultReceiver = target;
     }
 
     function assignRefCodeToAddress(bytes32 refCode, address receiver) external onlyRole(LOCAL_MANAGER_ROLE) {
@@ -84,7 +118,7 @@ contract ReferralsEngine is IReferralsEngine, Initializable, ERC165Upgradeable, 
         if (receiver == address(0)) {
             revert EmptyAddressError();
         }
-        if (receivers[refCode] != address(0)) {
+        if (receivers[refCode] != address(0) || receiversExtended[refCode].length > 0) {
             revert RefCodeAlreadyExistError(refCode);
         }
 
@@ -98,7 +132,7 @@ contract ReferralsEngine is IReferralsEngine, Initializable, ERC165Upgradeable, 
         if (receiver == address(0)) {
             revert EmptyAddressError();
         }
-        if (receivers[refCode] != address(0) && receiver != receivers[refCode]) {
+        if (receivers[refCode] != address(0) && receiver != receivers[refCode] || receiversExtended[refCode].length > 0) {
             revert RefCodeAlreadyExistError(refCode);
         }
         if (customSize < 0 || customSize > 100) {
@@ -106,6 +140,35 @@ contract ReferralsEngine is IReferralsEngine, Initializable, ERC165Upgradeable, 
         }
 
         _enableCustomRefCodeForAddress(refCode, receiver, customSize);
+    }
+
+    function assignExtendedRefCode(bytes32 refCode, address[] memory receiver, uint256[] memory customSizes) external onlyRole(LOCAL_MANAGER_ROLE) {
+        if (refCode == bytes32('')) {
+            revert EmptyRefCodeError();
+        }
+        if (receiver.length != customSizes.length) {
+            revert InvalidExtendedCodeReceiverAndPercentsInput(receiver.length, customSizes.length);
+        }
+
+        if (receivers[refCode] != address(0) && receiversExtended[refCode].length > 0) {
+            revert RefCodeAlreadyExistError(refCode);
+        }
+
+        uint256 sum = 0;
+        for (uint256 i; i < customSizes.length; i++) {
+            if (customSizes[i] < 0 || customSizes[i] > 100) {
+                revert InvalidCompensationPercent(customSizes[i]);
+            }
+
+            sum += customSizes[i];
+        }
+
+        if (sum != 100) {
+            revert InvalidCompensationPercent(sum);
+        }
+
+        receiversExtended[refCode] = receiver;
+        compensationsExtended[refCode] = customSizes;
     }
 
     function disableRefCode(bytes32 refCode) external {
@@ -117,6 +180,19 @@ contract ReferralsEngine is IReferralsEngine, Initializable, ERC165Upgradeable, 
         }
 
         _disableRefCode(refCode);
+    }
+
+    function disableRefCodeExtended(bytes32 refCode) external {
+        if (refCode == bytes32('')) {
+            revert EmptyRefCodeError();
+        }
+
+        if (!hasRole(LOCAL_MANAGER_ROLE, msg.sender)) {
+            revert RefCodeOperationNotPermitted(refCode, msg.sender);
+        }
+
+        compensationsExtended[refCode] = new uint256[](0);
+        receiversExtended[refCode] = new address[](0);
     }
 
     function _getPercentInternal(bytes32 refCode) internal view returns (uint256) {
