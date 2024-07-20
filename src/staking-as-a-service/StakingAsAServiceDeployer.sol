@@ -159,9 +159,11 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
 
     // METHODS - PUBLIC
     function deploy(address erc20Token, bytes32 refCode) payable external returns (address) {
+        /*
         if (!ERC165CheckerUpgradeable.supportsInterface(erc20Token, type(IERC20Upgradeable).interfaceId)) {
             revert ProvidedAddressNotCompatibleWithRequiredInterfaces(erc20Token, type(IERC20Upgradeable).interfaceId);
         }
+        */
 
         address staking = IContractDeployerInterface(contractDeployer).deployTemplateWithProxy{value: msg.value}(
             msg.sender, GROUP_STAKING, 0,
