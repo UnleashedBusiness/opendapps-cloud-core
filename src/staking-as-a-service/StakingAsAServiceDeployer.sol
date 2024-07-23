@@ -20,6 +20,7 @@ import {StakingAsAServiceDeployerInterface} from "@unleashed/opendapps-cloud-int
 import {TokenAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceInterface.sol";
 import {IPersonalVault} from "@unleashed/opendapps-cloud-interfaces/staking-as-a-service/PersonalVaultInterface.sol";
 import {IReferralsEngine} from "@unleashed/opendapps-cloud-interfaces/deployer/IReferralsEngine.sol";
+import {ReferralsEngineInterface_v2} from "@unleashed/opendapps-cloud-interfaces/deployer/ReferralsEngineInterface_v2.sol";
 
     error TokenAlreadyHasStaking();
     error TokenHasNoStakingDeployed();
@@ -201,7 +202,8 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
     function _buildServiceTaxationReceivers(bytes32 refCode) internal view returns (address[] memory, uint256[] memory) {
         address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
 
-        (uint256[] memory percents, address[] memory referrals) = IReferralsEngine(referralEngine).getTaxationReceivers(refCode);
+
+        (uint256[] memory percents, address[] memory referrals) = ReferralsEngineInterface_v2(referralEngine).getTaxationReceivers(refCode, msg.sender);
 
         address[] memory receiverList = new address[](referrals.length > 0 ? referrals.length : 1);
         uint256[] memory receiverPercentList = new uint256[](referrals.length > 0 ? referrals.length : 1);
