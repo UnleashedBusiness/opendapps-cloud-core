@@ -101,7 +101,7 @@ contract ReferralsEngine is ReferralsEngineInterface_v2, Initializable, ERC165Up
             receiversArray = new address[](2);
             receiversArray[0] = receivers[refCode];
             receiversArray[1] = defaultReceiver;
-        } else if (receiversExtended[refCode].length > 0) {
+        } else if (receiversExtended[refCode].length > 0 || whiteListMode[refCode]) {
             percents = compensationsExtended[refCode];
             receiversArray = receiversExtended[refCode];
         } else {
