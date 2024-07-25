@@ -205,23 +205,18 @@ contract StakingAsAServiceDeployer is StakingAsAServiceDeployerInterface, Initia
 
         (uint256[] memory percents, address[] memory referrals) = ReferralsEngineInterface_v2(referralEngine).getTaxationReceivers(refCode, msg.sender);
 
-        address[] memory receiverList = new address[](referrals.length > 0 ? referrals.length : 1);
-        uint256[] memory receiverPercentList = new uint256[](referrals.length > 0 ? referrals.length : 1);
+        address[] memory receiverList = new address[](referrals.length);
+        uint256[] memory receiverPercentList = new uint256[](referrals.length);
 
-        if (referrals.length > 0) {
-            uint256 total = 0;
-            for (uint256 i = 0; i < referrals.length; i++) {
-                receiverList[i] = referrals[i];
-                receiverPercentList[i] = serviceTax * percents[i] / 100;
-                total += receiverPercentList[i];
+        uint256 total = 0;
+        for (uint256 i = 0; i < referrals.length; i++) {
+            receiverList[i] = referrals[i];
+            receiverPercentList[i] = serviceTax * percents[i] / 100;
+            total += receiverPercentList[i];
 
-                if (total > serviceTax) {
-                    receiverPercentList[i] -= total - serviceTax;
-                }
+            if (total > serviceTax) {
+                receiverPercentList[i] -= total - serviceTax;
             }
-        } else {
-            receiverList[0] = serviceTaxReceiver;
-            receiverPercentList[0] = serviceTax;
         }
 
         return (receiverList, receiverPercentList);
