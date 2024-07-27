@@ -39,9 +39,12 @@ contract PersonalVault is IPersonalVault, Initializable, ERC165Upgradeable {
     }
 
     function initialize(address _token, address vaultOwner) external initializer {
+        /*
         if (!ERC165CheckerUpgradeable.supportsInterface(_token, type(IERC20Upgradeable).interfaceId)) {
             revert InterfaceNotSupportedError(_token, type(IERC20Upgradeable).interfaceId);
         }
+        */
+
         _owner = vaultOwner;
         _deployer = msg.sender;
 

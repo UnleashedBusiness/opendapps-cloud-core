@@ -19,6 +19,7 @@ import {IUniswapV2Router02} from "@uniswap/v2-periphery/contracts/interfaces/IUn
 import {IUniswapV2Factory} from "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 
 import {IReferralsEngine} from "@unleashed/opendapps-cloud-interfaces/deployer/IReferralsEngine.sol";
+import {ReferralsEngineInterface_v2} from "@unleashed/opendapps-cloud-interfaces/deployer/ReferralsEngineInterface_v2.sol";
 import {IContractDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/IContractDeployerInterface.sol";
 import {TokenAsAServiceDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceDeployerInterface.sol";
 import {TokenAsAServiceInterface} from "@unleashed/opendapps-cloud-interfaces/token-as-a-service/TokenAsAServiceInterface.sol";
@@ -71,6 +72,8 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
     bytes32 public constant GROUP_TOKENOMICS = keccak256("Tokenomics");
     bytes32 public constant GROUP_TOKEN = keccak256("Token");
     bytes32 public constant GROUP_TREASURY = keccak256("TREASURY"); //OLD DO NOT REMOVE
+
+    bytes32 public constant CODE_SERVICE_TAX_REF_CODE = keccak256("DON'T YOU SEE THAT I CAN HEAR YOU?");
 
     uint256 public constant DEFAULT_MIN_TOTAL_SUPPLY = 1 ether;
     uint256 public constant DEFAULT_MIN_ETH_LIQUIDITY_AMOUNT = 1 ether;
@@ -340,6 +343,9 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
         address lmAddress = IContractDeployerInterface(contractDeployer)
             .deployTemplateWithProxy{value: msg.value}(msg.sender, GROUP_LIQUIDITY_MINING, 0, bytes(""), refCode);
 
+        address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
+        ReferralsEngineInterface_v2(referralEngine).toggleAddressToRefCodeWhitelist(CODE_SERVICE_TAX_REF_CODE, lmAddress);
+
         (address[] memory controllerList, uint256[] memory controllerPercentList) = _buildControllerList(refCode, liquidityMiningServiceTax);
 
         AddressUpgradeable.functionCall(
@@ -465,19 +471,27 @@ contract TokenAsAServiceDeployer is TokenAsAServiceDeployerInterface, Initializa
     function _buildControllerList(bytes32 refCode, uint256 serviceTax) internal view returns (address[] memory, uint256[] memory) {
         address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
 
-        (uint256 percent, address referral) = IReferralsEngine(referralEngine).getCompensationPercent(refCode);
+        (uint256[] memory percents, address[] memory referrals) = ReferralsEngineInterface_v2(referralEngine).getTaxationReceivers(refCode, msg.sender);
 
-        address[] memory controllerList = new address[](referral != address(0) ? 2 : 1);
-        uint256[] memory controllerPercentList = new uint256[](referral != address(0) ? 2 : 1);
-        controllerList[0] = rewardsTreasury;
-        if (referral != address(0)) {
-            controllerList[1] = referral;
-            controllerPercentList[1] = percent.mul(serviceTax).div(100);
-            controllerPercentList[0] = serviceTax.sub(controllerPercentList[1]);
+        address[] memory receiverList = new address[](referrals.length > 0 ? referrals.length : 1);
+        uint256[] memory receiverPercentList = new uint256[](referrals.length > 0 ? referrals.length : 1);
+
+        if (referrals.length > 0) {
+            uint256 total = 0;
+            for (uint256 i = 0; i < referrals.length; i++) {
+                receiverList[i] = referrals[i];
+                receiverPercentList[i] = serviceTax * percents[i] / 100;
+                total += receiverPercentList[i];
+
+                if (total > serviceTax) {
+                    receiverPercentList[i] -= total - serviceTax;
+                }
+            }
         } else {
-            controllerPercentList[0] = serviceTax;
+            receiverList[0] = rewardsTreasury;
+            receiverPercentList[0] = serviceTax;
         }
 
-        return (controllerList, controllerPercentList);
+        return (receiverList, receiverPercentList);
     }
 }
