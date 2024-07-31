@@ -36,6 +36,9 @@ contract Treasury is TreasuryBase, TaxableService
         __TreasuryBase__init(_deployer, pocketTemplate, _controller);
     }
 
+    function PERCENT_SCALING() external view returns (uint256) {
+        return _percentScaling() > 0 ? _percentScaling() : LEGACY_PERCENT_SCALING;
+    }
 
     function _percentMaxLocal() internal override virtual view returns (uint256) {
         return _percentMax();
