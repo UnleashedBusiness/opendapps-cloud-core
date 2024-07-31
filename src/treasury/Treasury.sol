@@ -41,15 +41,15 @@ contract Treasury is TreasuryBase, TaxableService
     }
 
     function totalTax() external view returns (uint256) {
-        return totalTaxationPercent;
+        return _totalTaxationPercentInternal();
     }
 
     function taxation() external view returns (address[] memory, uint256[] memory) {
-        address[] memory receivers = _taxationReceiversList.values();
+        address[] memory receivers = _taxationReceiversListInternal().values();
         uint256[] memory amounts = new uint256[](receivers.length);
 
         for (uint256 i = 0; i < amounts.length; i++) {
-            amounts[i] = _taxationPercentsMap[receivers[i]];
+            amounts[i] = _taxationPercentsMapInternal()[receivers[i]];
         }
 
         return (receivers, amounts);

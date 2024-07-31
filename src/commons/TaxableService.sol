@@ -52,5 +52,17 @@ contract TaxableService is Initializable, PercentScalable {
         return taxableAmount - fee;
     }
 
+    function _totalTaxationPercentInternal() internal view returns (uint256) {
+        return totalTaxationPercent;
+    }
+
+    function _taxationReceiversListInternal() internal view returns (EnumerableSet.AddressSet storage) {
+        return _taxationReceiversList;
+    }
+
+    function _taxationPercentsMapInternal() internal view returns (mapping(address => uint256) storage) {
+        return _taxationPercentsMap;
+    }
+
     uint256[50] private __gap;
 }
