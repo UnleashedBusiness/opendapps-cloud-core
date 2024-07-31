@@ -40,6 +40,21 @@ contract Treasury is TreasuryBase, TaxableService
         return _percentScaling() > 0 ? _percentScaling() : LEGACY_PERCENT_SCALING;
     }
 
+    function totalTax() external view returns (uint256) {
+        return totalTaxationPercent;
+    }
+
+    function taxation() external view returns (address[] memory, uint256[] memory) {
+        address[] memory receivers = _taxationReceiversList.values();
+        uint256[] memory amounts = new uint256[](receivers.length);
+
+        for (uint256 i = 0; i < amounts.length; i++) {
+            amounts[i] = _taxationPercentsMap[receivers[i]];
+        }
+
+        return (receivers, amounts);
+    }
+
     function _percentMaxLocal() internal override virtual view returns (uint256) {
         return _percentMax();
     }
