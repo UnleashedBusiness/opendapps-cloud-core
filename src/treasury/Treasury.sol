@@ -15,6 +15,8 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {TreasuryInterface} from "@unleashed/opendapps-cloud-interfaces/treasury/TreasuryInterface.sol";
 import {ServiceDeployableInterface} from "@unleashed/opendapps-cloud-interfaces/deployer/ServiceDeployableInterface.sol";
 import {TreasuryPocketInterface} from "@unleashed/opendapps-cloud-interfaces/treasury/TreasuryPocketInterface.sol";
+import {TaxableService} from "../commons/TaxableService.sol";
+import {AssetTransferLibrary} from "../lib/AssetTransferLibrary.sol";
 
     error InvalidInitializedState(uint256 state);
     error InvalidSharesValueError();
@@ -28,14 +30,16 @@ import {TreasuryPocketInterface} from "@unleashed/opendapps-cloud-interfaces/tre
     error EmptyTemplateError();
 
 contract Treasury is TreasuryInterface, ServiceDeployableInterface,
-Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable {
+Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable,
+TaxableService
+{
     event TokenPayout(address indexed token, address[] pockets, uint256[] amounts);
 
-    using SafeMath for uint256;
-    using Address for address;
     using EnumerableSet for EnumerableSet.AddressSet;
 
-    uint256[50] private _gap;
+    uint256 public constant LEGACY_PERCENT_SCALING = 10;
+
+    uint256[45] private _gap;
 
     mapping(address => uint256) private availableMap; //unused
     mapping(address => uint256) private percents;
@@ -58,7 +62,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
     receive() payable virtual external {}
 
     modifier onlyValidShares(address account, uint256 shares) {
-        if (shares <= 0 || percents[controller].add(percents[account]) < shares) {
+        if (shares <= 0 || percents[controller] + percents[account] < shares) {
             revert InvalidSharesValueError();
         }
         _;
@@ -71,17 +75,21 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         _;
     }
 
-    function initialize(address _deployer, address pocketTemplate, address _controller) external initializer {
+    function initialize(
+        address _deployer, address pocketTemplate, address _controller, uint256 percentScaling,
+        address[] calldata taxationReceivers, uint256[] calldata taxationReceiversPercent
+    ) external initializer {
         if (pocketTemplate == address(0)) {
             revert EmptyTemplateError();
         }
 
         __ReentrancyGuard_init_unchained();
         __Ownable_init_unchained();
+        __TaxableService_init(percentScaling, taxationReceivers, taxationReceiversPercent);
 
         _pocketTemplate = pocketTemplate;
         controller = _controller;
-        percents[_controller] = 100_0;
+        percents[_controller] = _percentMax();
         //100.0 %
         payees.add(_controller);
 
@@ -89,6 +97,10 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         deployer = _deployer;
 
         _deployPocket(_controller);
+    }
+
+    function PERCENT_SCALING() public view returns (uint256) {
+        return _percentScaling() == 0 ? LEGACY_PERCENT_SCALING : _percentScaling();
     }
 
     function initializePockets(address _deployer, address pocketTemplate) external {
@@ -198,7 +210,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
 
         payees.add(account);
         percents[account] = shares;
-        percents[controller] = percents[controller].sub(shares);
+        percents[controller] = percents[controller] - shares;
         if (pockets[account] == address(0)) {
             _deployPocket(account);
         }
@@ -217,7 +229,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
 
         _payout();
 
-        percents[controller] = percents[controller].add(percents[account]).sub(shares);
+        percents[controller] = percents[controller] + percents[account] - shares;
         percents[account] = shares;
     }
 
@@ -234,7 +246,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
 
         _payout();
 
-        percents[controller] = percents[controller].add(percents[account]);
+        percents[controller] = percents[controller] + percents[account];
         payees.remove(account);
         percents[account] = 0;
     }
@@ -285,25 +297,21 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
     }
 
     function _payoutTokenToWallets(address token, address[] memory wallets, uint256[] memory amounts) internal {
-        if (token == address(0)) {
-            for (uint256 i = 0; i < wallets.length; i++) {
-                if (amounts[i] <= 0) continue;
+        for (uint256 i = 0; i < wallets.length; i++) {
+            if (amounts[i] <= 0) continue;
 
-                Address.sendValue(payable(wallets[i]), amounts[i]);
-            }
-        } else {
-            for (uint256 i = 0; i < wallets.length; i++) {
-                if (amounts[i] <= 0) continue;
+            uint256 payoutAmount = _percentMax() > 0
+                ? _applyTaxation(token, amounts[i])
+                : amounts[i];
 
-                SafeERC20.safeTransfer(IERC20(token), wallets[i], amounts[i]);
-            }
+            AssetTransferLibrary.transferAsset(token, wallets[i], payoutAmount);
         }
     }
 
     function _pendingBalance(address account, address token) internal view returns (uint256) {
-        return available(token)
-        .mul(percents[account])
-        .div(100_0);
+        uint256 divisionPercent = _percentMax() == 0 ? 100 * LEGACY_PERCENT_SCALING : _percentMax();
+
+        return available(token) * percents[account] / divisionPercent;
     }
 
     function _walletBalance(address wallet, address token) internal view returns (uint256) {

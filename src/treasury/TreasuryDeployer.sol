@@ -18,6 +18,8 @@ import {TreasuryDeployerInterface} from "@unleashed/opendapps-cloud-interfaces/t
 import {TreasuryPocketInterface} from "@unleashed/opendapps-cloud-interfaces/treasury/TreasuryPocketInterface.sol";
 import {TreasuryInterface} from "@unleashed/opendapps-cloud-interfaces/treasury/TreasuryInterface.sol";
 
+import {ReferralsEngineInterface_v2} from "@unleashed/opendapps-cloud-interfaces/deployer/ReferralsEngineInterface_v2.sol";
+
     error TokenAlreadyHasStaking();
     error TokenHasNoStakingDeployed();
     error PermittedForOwnerOnly();
@@ -34,12 +36,14 @@ contract TreasuryDeployer is TreasuryDeployerInterface, Initializable, ERC165, A
     bytes32 public constant GROUP_POCKET = keccak256("GROUP_POCKET");
     bytes32 public constant GROUP_TREASURY = keccak256("GROUP_TREASURY");
 
+    uint256 public constant PERCENT_SCALING = 10 ** 3;
+
     address public contractDeployer;
     EnumerableSet.AddressSet private _operations;
 
+    uint256 public serviceTax;
+
     using EnumerableSet for EnumerableSet.AddressSet;
-    using SafeMath for uint256;
-    using Address for address;
 
     function initialize(
         address _contractDeployer, address treasuryLibrary,
@@ -73,7 +77,7 @@ contract TreasuryDeployer is TreasuryDeployerInterface, Initializable, ERC165, A
 
     function supportsInterface(bytes4 interfaceId) public override(AccessControlUpgradeable, ERC165) view returns (bool) {
         return interfaceId == type(TreasuryDeployerInterface).interfaceId
-            || AccessControlUpgradeable.supportsInterface(interfaceId)
+        || AccessControlUpgradeable.supportsInterface(interfaceId)
             || ERC165.supportsInterface(interfaceId);
     }
 
@@ -81,7 +85,7 @@ contract TreasuryDeployer is TreasuryDeployerInterface, Initializable, ERC165, A
         return _operations.values();
     }
 
-    function isValidOperation(address operation) external view returns(bool) {
+    function isValidOperation(address operation) external view returns (bool) {
         return _operations.contains(operation);
     }
 
@@ -124,6 +128,11 @@ contract TreasuryDeployer is TreasuryDeployerInterface, Initializable, ERC165, A
         IContractDeployerInterface(contractDeployer).upgradeTemplateInterfaceList(GROUP_TREASURY, 0, treasuryInterfaces);
     }
 
+
+    function setServiceTax(uint256 tax) external onlyRole(LOCAL_MANAGER_ROLE) {
+        serviceTax = tax;
+    }
+
     function setDeployTax(uint256 taxSize) external onlyRole(LOCAL_MANAGER_ROLE) {
         IContractDeployerInterface(contractDeployer).upgradeDeployTax(
             GROUP_TREASURY,
@@ -136,18 +145,23 @@ contract TreasuryDeployer is TreasuryDeployerInterface, Initializable, ERC165, A
     function deploy(bytes32 refCode) payable external returns (address) {
         address treasury = IContractDeployerInterface(contractDeployer)
             .deployTemplateWithProxy{value: msg.value}(
-                msg.sender, GROUP_TREASURY, 0,
-                bytes(""),
-                refCode
-            );
+            msg.sender, GROUP_TREASURY, 0,
+            bytes(""),
+            refCode
+        );
+
+        (address[] memory receiverList, uint256[] memory receiverPercentList) = _buildServiceTaxationReceivers(refCode);
 
         Address.functionCall(
             treasury,
             abi.encodeWithSignature(
-                "initialize(address,address,address)",
+                "initialize(address,address,address,uint256,address[],uint256[])",
                 address(this),
                 IContractDeployerInterface(contractDeployer).currentTemplate(GROUP_POCKET, 0),
-                msg.sender
+                msg.sender,
+                PERCENT_SCALING,
+                receiverList,
+                receiverPercentList
             )
         );
 
@@ -169,5 +183,27 @@ contract TreasuryDeployer is TreasuryDeployerInterface, Initializable, ERC165, A
         );
 
         return IContractDeployerInterface(contractDeployer).currentTemplate(GROUP_TREASURY, 0);
+    }
+
+    function _buildServiceTaxationReceivers(bytes32 refCode) internal view returns (address[] memory, uint256[] memory) {
+        address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
+
+        (uint256[] memory percents, address[] memory referrals) = ReferralsEngineInterface_v2(referralEngine).getTaxationReceivers(refCode, msg.sender);
+
+        address[] memory receiverList = new address[](referrals.length);
+        uint256[] memory receiverPercentList = new uint256[](referrals.length);
+
+        uint256 total = 0;
+        for (uint256 i = 0; i < referrals.length; i++) {
+            receiverList[i] = referrals[i];
+            receiverPercentList[i] = serviceTax * percents[i] / 100;
+            total += receiverPercentList[i];
+
+            if (total > serviceTax) {
+                receiverPercentList[i] -= total - serviceTax;
+            }
+        }
+
+        return (receiverList, receiverPercentList);
     }
 }
