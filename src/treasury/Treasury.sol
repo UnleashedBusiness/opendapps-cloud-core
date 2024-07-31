@@ -39,7 +39,7 @@ TaxableService
 
     uint256 public constant LEGACY_PERCENT_SCALING = 10;
 
-    uint256[45] private _gap;
+    uint256[46] private _gap;
 
     mapping(address => uint256) private availableMap; //unused
     mapping(address => uint256) private percents;
