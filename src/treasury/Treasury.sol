@@ -55,7 +55,7 @@ contract Treasury is TreasuryBase, TaxableService
         return (receivers, amounts);
     }
 
-    function _totalTaxLocal() internal virtual view returns (uint256) {
+    function _totalTaxLocal() internal override virtual view returns (uint256) {
         return _totalTaxationPercentInternal();
     }
 
