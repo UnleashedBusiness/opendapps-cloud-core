@@ -70,6 +70,8 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
 
     function _percentMaxLocal() internal virtual view returns (uint256);
 
+    function _totalTaxLocal() internal virtual view returns (uint256);
+
     function _applyTaxationLocal(address token, uint256 amount) internal virtual returns (uint256);
 
     function __TreasuryBase__init(address _deployer, address pocketTemplate, address _controller) internal onlyInitializing {
@@ -289,7 +291,7 @@ Initializable, ERC165Upgradeable, ReentrancyGuardUpgradeable, OwnableUpgradeable
         for (uint256 i = 0; i < wallets.length; i++) {
             if (amounts[i] <= 0) continue;
 
-            uint256 payoutAmount = _percentMaxLocal() > 0
+            uint256 payoutAmount = _totalTaxLocal() > 0
                 ? _applyTaxationLocal(token, amounts[i])
                 : amounts[i];
 

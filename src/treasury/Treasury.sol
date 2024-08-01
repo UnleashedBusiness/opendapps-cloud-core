@@ -41,7 +41,7 @@ contract Treasury is TreasuryBase, TaxableService
     }
 
     function totalTax() external view returns (uint256) {
-        return _totalTaxationPercentInternal();
+        return _totalTaxLocal();
     }
 
     function taxation() external view returns (address[] memory, uint256[] memory) {
@@ -53,6 +53,10 @@ contract Treasury is TreasuryBase, TaxableService
         }
 
         return (receivers, amounts);
+    }
+
+    function _totalTaxLocal() internal virtual view returns (uint256) {
+        return _totalTaxationPercentInternal();
     }
 
     function _percentMaxLocal() internal override virtual view returns (uint256) {
