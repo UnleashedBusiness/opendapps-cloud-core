@@ -7,6 +7,7 @@ import {PercentScalable} from "./PercentScalable.sol";
 import {AssetTransferLibrary} from "../lib/AssetTransferLibrary.sol";
 
     error TaxationReceiversAddressAndPercentsLengthDifference(uint256 receiversCount, uint256 percentsCount);
+    error TaxationZeroWithReceivers(uint256 receiversCount);
 
 contract TaxableService is Initializable, PercentScalable {
     EnumerableSet.AddressSet private _taxationReceiversList;
@@ -30,6 +31,10 @@ contract TaxableService is Initializable, PercentScalable {
             _taxationPercentsMap[taxationReceivers[i]] = taxationReceiversPercent[i];
 
             totalTaxationPercent += taxationReceiversPercent[i];
+        }
+
+        if (totalTaxationPercent <= 0 && taxationReceivers.length > 0) {
+            revert TaxationZeroWithReceivers(taxationReceivers.length);
         }
     }
 

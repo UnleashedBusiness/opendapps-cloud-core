@@ -186,6 +186,10 @@ contract TreasuryDeployer is TreasuryDeployerInterface, Initializable, ERC165, A
     }
 
     function _buildServiceTaxationReceivers(bytes32 refCode) internal view returns (address[] memory, uint256[] memory) {
+        if (serviceTax <= 0) {
+            return (new address[](0), new uint256[](0));
+        }
+
         address referralEngine = IContractDeployerInterface(contractDeployer).referralsEngine();
 
         (uint256[] memory percents, address[] memory referrals) = ReferralsEngineInterface_v2(referralEngine).getTaxationReceivers(refCode, msg.sender);
