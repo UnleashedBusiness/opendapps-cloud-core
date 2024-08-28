@@ -20,7 +20,7 @@ import {SmartSwapMultiPriceModelInterface} from "@unleashed/opendapps-cloud-inte
 
     error ProvidedAddressNotCompatibleWithRequiredInterfaces();
     error TokenAlreadyHasBacking();
-    error ArrayLengthMismatchError(uint256,uint256);
+    error ArrayLengthMismatchError(uint256, uint256);
 
 contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDeployerInterface, ERC165Upgradeable, AccessControlUpgradeable {
     uint256[150] private __gap;
@@ -208,14 +208,24 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
         return backing;
     }
 
-    function deployMultiSimpleModel(address erc20Token, address[] memory backingTokens, uint256[] memory minThresholds, bytes32 refCode) payable external returns (address) {
+    function deployMultiSimpleModel(
+        address erc20Token,
+        address[] memory backingTokens,
+        uint256[] memory minThresholds,
+        bool[] memory permaLocked,
+        bytes32 refCode
+    ) payable external returns (address) {
         // Thanks DSUD
         //if (!ERC165CheckerUpgradeable.supportsInterface(erc20Token, type(IERC20Upgradeable).interfaceId)) {
         //    revert ProvidedAddressNotCompatibleWithRequiredInterfaces();
         //}
 
         if (backingTokens.length != minThresholds.length) {
-            revert ArrayLengthMismatchError(backingTokens.length,minThresholds.length);
+            revert ArrayLengthMismatchError(backingTokens.length, minThresholds.length);
+        }
+
+        if (backingTokens.length != permaLocked.length) {
+            revert ArrayLengthMismatchError(backingTokens.length, permaLocked.length);
         }
 
         address model = IContractDeployerInterface(contractDeployer).deployTemplate(
@@ -241,8 +251,8 @@ contract BaselineInsuranceServiceDeployer is Initializable, BaselineInsuranceDep
         AddressUpgradeable.functionCall(
             backing,
             abi.encodeWithSignature(
-                "initialize(address[],uint256[],address,address,uint256,address,bool)",
-                backingTokens, minThresholds, erc20Token,
+                "initialize(address[],uint256[],bool[],address,address,uint256,address,bool)",
+                backingTokens, minThresholds, permaLocked, erc20Token,
                 model, defaultBlocksDistance, swapRouter, false
             )
         );
