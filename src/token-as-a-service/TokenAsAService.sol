@@ -145,9 +145,14 @@ Initializable, ERC165, ERC20Upgradeable, OwnableUpgradeable {
             }
         }
 
-        bool isValidTransaction = (amount < totalSupply().mul(AUTOVALID_TRANSACTION_SIZE_PERCENT).div(100)
-            && balanceOf(recipient).add(amount) < totalSupply().mul(AUTOVALID_WALLET_SIZE_PERCENT).div(100))
-            || DynamicTokenomicsInterface(tokenomics).isTransactionValid(sender, recipient, amount);
+        bool isValidTransaction = recipient != address(this)
+            && (
+                (
+                    amount < totalSupply().mul(AUTOVALID_TRANSACTION_SIZE_PERCENT).div(100)
+                    && balanceOf(recipient).add(amount) < totalSupply().mul(AUTOVALID_WALLET_SIZE_PERCENT).div(100)
+                )
+                || DynamicTokenomicsInterface(tokenomics).isTransactionValid(sender, recipient, amount)
+            );
         if (!isValidTransaction) {
             revert TransactionInvalidError(sender, recipient, amount);
         }

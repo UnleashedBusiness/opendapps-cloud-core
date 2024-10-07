@@ -12,7 +12,10 @@ import {TimersUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Timer
 import {ProposalGovernorInterface} from "@unleashed/opendapps-cloud-interfaces/governance/ProposalGovernorInterface.sol";
 
 import "./BaseGovernor.sol";
+import "./../lib/AssetTransferLibrary.sol";
 
+    error EmptyAddressError();
+    error InvalidAmountError(uint256 min, uint256 max, uint256 actual);
     error OnlyGovernancePermitted(address expected, address actual);
     error ProposerVotesBelowProposalThreshold(uint256 expected, uint256 actual);
     error VotingPowerBelowVotingThreshold(address sender);
@@ -67,6 +70,8 @@ IERC1155ReceiverUpgradeable, BaseGovernor {
         }
         _;
     }
+
+    receive() payable external {}
 
     function __BaseProposalGovernor_init(string memory name_) internal onlyInitializing {
         __BaseGovernor_init_unchained();
@@ -305,6 +310,18 @@ IERC1155ReceiverUpgradeable, BaseGovernor {
         _countVote(proposalId, voter, weight);
 
         emit VoteCast(voter, proposalId);
+    }
+
+    function transferNative(uint256 amount, address receipt) external onlyGovernance {
+        if (receipt == address(0) || receipt == address(this)) {
+            revert EmptyAddressError();
+        }
+
+        if (amount <= 0 || address(this).balance < amount) {
+            revert InvalidAmountError(0, address(this).balance, amount);
+        }
+
+        AssetTransferLibrary.transferAsset(address(0), receipt, amount);
     }
 
     function _executor() internal view virtual returns (address) {
